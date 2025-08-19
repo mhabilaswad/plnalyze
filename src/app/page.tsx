@@ -50,7 +50,7 @@ export default function Page() {
 
       return {
         success: true,
-        message: "Upload dan evaluasi berhasil (simulasi).",
+        message: "Upload dan evaluasi berhasil",
         data: {
           serpo: processedSerpo,
           predictions: processedPred,
