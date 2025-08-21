@@ -158,11 +158,10 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ onFileUpload }) =
              - “Berhasil sesuai ketentuan” = Durasi total kurang dari 240 menit.
              - “Perlu justifikasi” = Durasi total lebih dari 240 menit (terima jika keterangan yang valid tercantum seperti force majeure, menunggu material, akses terbatas, kelelahan, atau daftar keterangan lain yang tercantum di input).
           7. Stop clock: bila terdapat stop clock atau waktu berhenti, gunakan nilainya. Jika stop_clock = 0 tetapi keterangan menyatakan ada jeda/menunggu/berhenti, anggap ada inkonsistensi;
-          8. tulis Kronologi per gangguan (untuk Rangkuman)
-          9. Analisa kuantitatif (untuk Evaluasi): hitung dan sebutkan minimal hal berikut:
+          8. tulis Kronologi per gangguan (untuk Rangkuman). Sebutkan apa yang sering terjadi dan penyebabnya apa dalam paragraf yang kronologis
+          9. Analisa kuantitatif (untuk Evaluasi): sebutkan minimal hal berikut:
              - Jumlah total insiden di dataset.
              - Jumlah dan persentase insiden yang selesai kurang dari 240 menit atau melewati 240 menit.
-             - Rata-rata (mean) durasi aktif (menit) dan median durasi aktif (menit).
              - Insiden terpanjang (sebutkan durasi, lokasi, waktu, dan nama jika ada).
              - Sebutkan semua insiden yang memiliki durasi aktif >= 240 menit, dan untuk masing-masing nyatakan apakah keterangan yang ada menerima atau menolak durasi panjang tersebut (berdasarkan apakah keterangan valid tercantum).
              - Temukan pola/ tren: lokasi yang sering bermasalah, jam atau hari yang sering terjadi gangguan, atau tipe penyebab yang dominan — hanya bila data mendukung secara numerik.
@@ -170,7 +169,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ onFileUpload }) =
               - Berikan penilaian apakah tanggapan cepat & tepat untuk setiap insiden (berdasarkan durasi aktif, tindakan, dan keterangan).
               - Jika ada jeda tidak normal (mis. jeda lama antara mulai dan respon/akses), jelaskan dampak spesifiknya pada durasi dan pada kemungkinan pemulihan layanan.
               - Berikan rekomendasi tindakan operasional berbasis data (mis. alokasi sumber daya, prioritas lokasi), tetapi jangan menyarankan perubahan pada cara pencatatan stop clock (sesuai permintaan).
-          11. Bukti & Transparansi: setiap klaim analitis yang penting harus disertai referensi langsung ke field data yang mendukung (mis. “Insiden #23 — Durasi Aktif 360 menit; keterangan: menunggu material.”). Gunakan format singkat dalam paragraf (tidak perlu referensi file).
+          11. Bukti & Transparansi: setiap klaim analitis yang penting harus disertai referensi langsung ke field data yang mendukung
           12. Larangan model: 
               - Jangan menambahkan nama, lokasi, waktu, atau angka yang tidak ada di data.
               - Jangan berspekulasi tentang penyebab selain yang ada di field “penyebab” / “keterangan”.
@@ -186,7 +185,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ onFileUpload }) =
               content: `DATA:\n\`\`\`\n${dataContext}\n\`\`\``,
             },
           ],          
-          temperature: 0.0,
+          temperature: 0.1,
           top_p: 0.7,
           top_k: 40,
           repeat_penalty: 1.1,
