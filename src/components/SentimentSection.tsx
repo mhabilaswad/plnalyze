@@ -22,10 +22,10 @@ const SentimentSection: React.FC<SentimentSectionProps> = ({ sentiment }) => {
 	const percent = Math.round(data.overallScore * 100);
 
 	return (
-		<section className="bg-white rounded-xl shadow-sm p-6">
-			<div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+		<div className="bg-white rounded-lg shadow-sm p-6">
+			<div className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 				<div>
-					<h2 className="text-lg font-medium text-gray-900">Analisis Sentimen terhadap PLN</h2>
+					<h2 className="text-xl font-semibold text-gray-900">Analisis Sentimen terhadap PLN</h2>
 					<p className="text-sm text-gray-500">Rangkuman persepsi dari komentar pelanggan.</p>
 				</div>
 				<div
@@ -72,7 +72,7 @@ const SentimentSection: React.FC<SentimentSectionProps> = ({ sentiment }) => {
 					</ul>
 				</div>
 			</div>
-		</section>
+		</div>
 	);
 };
 

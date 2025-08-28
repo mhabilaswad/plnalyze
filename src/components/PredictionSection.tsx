@@ -72,10 +72,10 @@ const PredictionSection: React.FC<PredictionSectionProps> = ({ predictions }) =>
 	}, [data, hasData]);
 
 	return (
-		<section className="bg-white rounded-xl shadow-sm p-6">
-			<div className="mb-4">
-				<h2 className="text-lg font-medium text-gray-900">Prediksi waktu penanganan</h2>
-				<p className="text-sm text-gray-500">Grafik prediksi berbasis placeholder.</p>
+		<div className="bg-white rounded-lg shadow-sm p-6">
+			<div className="mb-6">
+				<h2 className="text-xl font-semibold text-gray-900">Prediksi Waktu Penanganan</h2>
+				<p className="text-sm text-gray-500">Grafik prediksi berbasis data historis gangguan PLN.</p>
 			</div>
 
 			{!hasData ? (
@@ -105,7 +105,7 @@ const PredictionSection: React.FC<PredictionSectionProps> = ({ predictions }) =>
 					</div>
 				</>
 			)}
-		</section>
+		</div>
 	);
 };
 

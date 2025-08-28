@@ -47,24 +47,25 @@ export interface UploadResult {
 	data?: ProcessedPayload;
 }
 
-// New types for Excel processing
+// FILE: src/types/index.ts
 export interface ServiceData {
 	nama_service: string;
 	sid: string;
 	tiket_open: string;
+	durasi_menit: string;
+	durasi_total: string;
 	penyebab: string;
 	action: string;
-	keterangan2: string;
-	durasi_menit: string;         
-	stop_clock: string;          
-	durasi_total: string;
-  }  
-
-export interface ServiceGroup {
+	keterangan: string;
+	stop_clock: string;
+  }
+  
+  export interface ServiceGroup {
 	nama_service: string;
 	sid: string;
 	records: ServiceData[];
-}
+  }
+  
 
 export interface ServiceEvaluation {
 	nama_service: string;
@@ -74,6 +75,7 @@ export interface ServiceEvaluation {
 	isLoading: boolean;
 	isExpanded: boolean;
 	evalTime?: number | null;
+	dataContext?: string;
 }
 
 export interface ExcelProcessResult {

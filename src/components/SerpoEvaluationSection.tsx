@@ -34,9 +34,9 @@ const SerpoEvaluationSection: React.FC<SerpoEvaluationSectionProps> = ({ serpoDa
 	const data = serpoData ?? getMockSerpoData();
 
 	return (
-		<section className="bg-white rounded-xl shadow-sm p-6">
-			<div className="mb-4">
-				<h2 className="text-lg font-medium text-gray-900">Evaluasi Serpo</h2>
+		<div className="bg-white rounded-lg shadow-sm p-6">
+			<div className="mb-6">
+				<h2 className="text-xl font-semibold text-gray-900">Evaluasi Serpo</h2>
 				<p className="text-sm text-gray-500">Ringkasan metrik SERPO dan isu teratas bulan ini.</p>
 			</div>
 
@@ -75,7 +75,7 @@ const SerpoEvaluationSection: React.FC<SerpoEvaluationSectionProps> = ({ serpoDa
 					))}
 				</ul>
 			</div>
-		</section>
+		</div>
 	);
 };
 

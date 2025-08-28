@@ -12,8 +12,8 @@ const CANONICAL_KEYS = [
   "action",
   "keterangan1",
   "keterangan2",
-  "durasi_(menit)",
-  "stop_clock_(icon)",
+  "durasi_menit",
+  "stop_clock_(durasi)",
   "durasi_total",
 ];
 
@@ -91,29 +91,8 @@ function parseSheet(ws: XLSX.WorkSheet): RowObj[] {
 
   if (!rows.length) return [];
 
-  // baris pertama → header mentah
   const rawHeaders = (rows[0] as any[]).map((h) => String(h ?? ""));
-  
-  // buat nama kunci unik tapi lebih rapi
-  const keyCount: Record<string, number> = {};
-  const headers = rawHeaders.map((h) => {
-    let key = normalizeHeader(h);
-    if (!key) key = "col";
-    
-    // jika key sudah ada "keterangan", urutkan dari 1,2, dst
-    if (/^keterangan/.test(key)) {
-      keyCount[key] = (keyCount[key] || 0) + 1;
-      key = `keterangan${keyCount[key]}`; // jadi keterangan1, keterangan2
-    } else {
-      if (keyCount[key]) {
-        keyCount[key]++;
-        key = `${key}_${keyCount[key]}`;
-      } else {
-        keyCount[key] = 1;
-      }
-    }
-    return key;
-  });
+  const headers = rawHeaders.map(normalizeHeader);
 
   let out: RowObj[] = [];
   for (let i = 1; i < rows.length; i++) {
@@ -122,35 +101,49 @@ function parseSheet(ws: XLSX.WorkSheet): RowObj[] {
     headers.forEach((h, idx) => {
       let val = arr?.[idx];
       if (typeof val === "string") val = val.trim();
-    
-      // 🔹 khusus tiket_open: konversi jika angka
+
       if (h === "tiket_open" && typeof val === "number") {
         val = excelDateToString(val);
       }
-    
+
       obj[h] = val ?? "";
     });
-    
 
-    // SID dan nama_service wajib ada → skip jika kosong
-    if (!obj.sid || String(obj.sid).trim() === "" || !obj.nama_service || String(obj.nama_service).trim() === "") {
-      continue;
-    }
+    // 🔹 SID & nama_service wajib ada
+    if (!obj.sid || !obj.nama_service) continue;
     obj.sid = String(obj.sid).replace(/\.0$/, "").trim();
-    out.push(obj);
+
+    // 🔹 gabung semua kolom keterangan
+    const ketCols = Object.keys(obj).filter((k) => k.startsWith("keterangan"));
+    obj.keterangan = ketCols
+      .map((k) => obj[k])
+      .filter(Boolean)
+      .join(" | ");
+
+    // 🔹 tetap simpan semua kolom asli
+    const full: RowObj = { ...obj };
+
+    // 🔹 normalisasi durasi_menit agar konsisten
+    if (!full.durasi_menit && full["durasi_(menit)"]) {
+      full.durasi_menit = full["durasi_(menit)"];
+    }
+
+    // 🔹 pastikan field keterangan sudah ada
+    full.keterangan = obj.keterangan || "";
+
+    out.push(full);
   }
 
-  // buang baris yang seluruh kolomnya kosong
-  out = out.filter((row) =>
+  return out.filter((row) =>
     Object.values(row).some((v) => v !== "" && v !== null && v !== undefined)
   );
-
-  return out;
 }
 
 // sesuaikan urutan kunci agar konsisten (canonical keys dulu, lalu sisanya alfabet)
 function orderKeys(row: RowObj): RowObj {
-  const rest = Object.keys(row).filter((k) => !CANONICAL_KEYS.includes(k)).sort();
+  const rest = Object.keys(row)
+    .filter((k) => !CANONICAL_KEYS.includes(k))
+    .sort();
   const ordered: RowObj = {};
   [...CANONICAL_KEYS, ...rest].forEach((k) => {
     if (row.hasOwnProperty(k)) ordered[k] = row[k];
@@ -160,16 +153,22 @@ function orderKeys(row: RowObj): RowObj {
 
 // buat narasi
 function buildNarrative(record: RowObj): string {
-  return `${record.nama_service} (${record.sid}), - pada ${record.tiket_open}, perbaikan selama ${record["durasi_(menit)"]} menit dengan ${record["stop_clock_(icon)"]} menit berhenti sehingga ${record["durasi_total"]} menit waktu yang terhitung. Penyebab: ${record.penyebab}, Action: ${record.action}, Keterangan: ${record.keterangan1}${record.keterangan2 ? ", " + record.keterangan2 : ""}`;
+  return `${record.nama_service} (${record.sid}), pada ${record.tiket_open}, 
+  perbaikan selama ${record.durasi_menit} menit sehingga total ${record.durasi_total} menit. 
+  Penyebab: ${record.penyebab}, Action: ${record.action}, Keterangan: ${record.keterangan}`;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!file)
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
-      return NextResponse.json({ error: "Invalid file type. Please upload Excel or CSV file." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid file type. Please upload Excel or CSV file." },
+        { status: 400 }
+      );
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
@@ -183,7 +182,11 @@ export async function POST(request: NextRequest) {
       if (parsed.length) allRows.push(...parsed);
     }
 
-    if (!allRows.length) return NextResponse.json({ error: "Tidak ada data yang dapat dibaca dari file." }, { status: 400 });
+    if (!allRows.length)
+      return NextResponse.json(
+        { error: "Tidak ada data yang dapat dibaca dari file." },
+        { status: 400 }
+      );
 
     const normalized = allRows.map(orderKeys);
 
@@ -192,7 +195,9 @@ export async function POST(request: NextRequest) {
       const sidB = String(b.sid ?? "");
       const sidCmp = sidA.localeCompare(sidB);
       if (sidCmp !== 0) return sidCmp;
-      return String(a.nama_service ?? "").localeCompare(String(b.nama_service ?? ""));
+      return String(a.nama_service ?? "").localeCompare(
+        String(b.nama_service ?? "")
+      );
     });
 
     // grup per service
@@ -224,6 +229,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("Error processing Excel file:", err);
-    return NextResponse.json({ error: "Failed to process Excel file" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to process Excel file" },
+      { status: 500 }
+    );
   }
 }
