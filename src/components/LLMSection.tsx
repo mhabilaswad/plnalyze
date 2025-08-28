@@ -1,7 +1,7 @@
 // FILE: src/components/LLMSection.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import type {
     ServiceEvaluation,
     ExcelProcessResult,
@@ -14,184 +14,25 @@ import {
 
 export interface LLMSectionProps {
     excelData: ExcelProcessResult | null;
+    serviceEvaluations: ServiceEvaluation[];
+    onEvaluateService: (serviceIndex: number) => Promise<void>;
+    onToggleServiceExpansion: (serviceIndex: number) => void;
+    searchQuery: string;
+    onSearchQueryChange: (query: string) => void;
+    sortMode: 'record' | 'durasi';
+    onSortModeChange: (mode: 'record' | 'durasi') => void;
 }
 
-const LLMSection: React.FC<LLMSectionProps> = ({ excelData }) => {
-    const [serviceEvaluations, setServiceEvaluations] = useState<
-        ServiceEvaluation[]
-    >([]);
-    const [searchQuery, setSearchQuery] = useState<string>("");
-    const [sortMode, setSortMode] = useState<'record' | 'durasi'>('record');
-
-    // Initialize service evaluations when excelData changes
-    useEffect(() => {
-        if (excelData?.services) {
-            const sortedServices = [...excelData.services].sort(
-                (a: any, b: any) => b.records.length - a.records.length
-            );
-
-            const initialEvaluations = sortedServices.map((s: any) => ({
-                nama_service: s.nama_service,
-                sid: s.sid,
-                summary: "",
-                evaluation: "",
-                isLoading: false,
-                isExpanded: false,
-                evalTime: null as number | null,
-            }));
-            setServiceEvaluations(initialEvaluations);
-        }
-    }, [excelData]);
-
-    async function evaluateService(serviceIndex: number) {
-        if (!excelData || serviceIndex >= serviceEvaluations.length) return;
-
-        const sortedServices = [...excelData.services].sort(
-            (a, b) => b.records.length - a.records.length
-        );
-        const service = sortedServices[serviceIndex];
-
-        setServiceEvaluations((prev) =>
-            prev.map((s, idx) =>
-                idx === serviceIndex ? { ...s, isLoading: true } : s
-            )
-        );
-
-        const startTime = performance.now();
-        try {
-            const header = `${service.nama_service} (${service.sid})`;
-            const rows = service.records.map((record) => {
-                const tiket = record.tiket_open ?? "";
-                const durasi = record.durasi_menit ?? "";
-                const durasiTotal = record.durasi_total ?? durasi;
-                const penyebab = record.penyebab ?? "";
-                const action = record.action ?? "";
-                const ket = record.keterangan ?? "";
-                const stopClock = record.stop_clock ?? "0";
-
-                const fields: string[] = [];
-                if (tiket) {
-                    fields.push(
-                        `Pada ${tiket}, ${penyebab}, Aksi yang dilakukan yaitu ${action}, perbaikan dilakukan selama ${durasi} menit dengan ${stopClock} menit stop clock sehingga total waktu perbaikan selama ${durasiTotal} menit. Kronologinya yaitu sebagai berikut ${ket}`
-                    );
-                }
-                return `- ${fields.join(", ")}`;
-            });
-            const dataContext = header + "\n" + rows.join("\n");
-
-            console.log("DataContext yang dikirim ke LLM:\n", dataContext);
-
-            setServiceEvaluations((prev) =>
-                prev.map((s, idx) =>
-                    idx === serviceIndex ? { ...s, isLoading: true, dataContext } : s
-                )
-            );
-
-            const res = await fetch("http://localhost:8000/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: "DeepSeek-PLN",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `Kamu adalah Model AI yang bertugas melakukan evaluasi bulanan ICON (Unit Layanan PLN) berdasarkan data gangguan berikut. 
-
-INSTRUKSI PENTING: 
-- Jawaban HARUS hanya berisi dua bagian: 
-1) Rangkuman: (minimal 5 kalimat dalam 1 paragraf) 
-2) Evaluasi: (dalam minimal 5 poin dimaan 1 poin 1 kalimat)
-3) gabung menjadi 1 paragraf dengan dipisahkan oleh \n, contoh: "Rangkuman: ... .\n Evaluasi: ..."
-- Format tepat: 
-Rangkuman: [paragraf] 
-Evaluasi: [poin-poin] 
-Jika gagal, keluarkan "INVALID_OUTPUT". 
-
-PANDUAN ISI: 
-- Pada bagian **Rangkuman**, uraikan jenis-jenis gangguan yang muncul pada bulan tersebut, termasuk penyebab, tindakan (action), dan kondisi keterangan. Jelaskan pula bagaimana gangguan tersebut ditangani. 
-- Pada bagian **Evaluasi**, analisis kinerja Serpo dalam menangani gangguan. Gunakan durasi total sebagai dasar: - Jika durasi total kurang dari 240 menit (4 jam), anggap berhasil. 
-- Jika lebih dari 240 menit, terima sebagai wajar hanya jika ada keterangan yang wajar (misalnya masalah akses, menunggu material, dan sebagainya). 
-- Jika stop clock (waktu berhenti) terhitung 0 tapi ada catatan keterangan alasan kenapa lama, maka wajarkan. Jika tidak ada maka sebutkan bahwa ada masalah pada kinerja serpo.
-- tetap kritis jika ada jeda waktu yang tidak normal.
-- Pastikan evaluasi menyoroti apakah Serpo bekerja cepat, ada kendala tertentu, dan bagaimana kualitas tindak lanjutnya.
-- poin evaluasi mencakup bagaimana cepat tanggap tim serpo, bagaimana keefektifan tim dalam menyelesaikan masalah
-- berikan juga poin apa yang harus ditingkatkan oleh tim serpo tersebut
-- klasifikasikan apakah secara keseluruhan kinerja serpo tersebut sangat baik, cukup baik, atau perlu dievaluasi.
-- note: stop clock itu bukan tim serpo yang mencatat, tim serpo tugasnya hanya melapor dengan keterangan jika ingin berhenti. sehingga jangan rekomendasikan untuk perbaiki pencatatan stop clock. jangan totalin jumlah durasi tiap gangguannya
-- EVALUASI HARUS POIN-POIN
-`,
-                        },
-                        {
-                            role: "user",
-                            content: `DATA:\n\`\`\`\n${dataContext}\n\`\`\``,
-                        },
-                    ],
-                    temperature: 0.6,
-                    top_p: 0.7,
-                    top_k: 40,
-                    repeat_penalty: 1.1,
-                    max_tokens: -1,
-                }),
-            });
-
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            const raw = data?.choices?.[0]?.message?.content || "";
-            const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, "");
-
-            const summaryMatch = cleaned.match(
-                /Rangkuman:\s*([\s\S]*?)(?=Evaluasi:|$)/i
-            );
-            const evaluationMatch = cleaned.match(/Evaluasi:\s*([\s\S]*?)$/i);
-
-            const summary = summaryMatch?.[1]?.trim() || "Tidak ada rangkuman.";
-            const evaluation = evaluationMatch?.[1]?.trim() || "Tidak ada evaluasi.";
-
-            const endTime = performance.now();
-            const durationSeconds = (endTime - startTime) / 1000;
-
-            setServiceEvaluations((prev) =>
-                prev.map((s, idx) =>
-                    idx === serviceIndex
-                        ? {
-                            ...s,
-                            summary,
-                            evaluation,
-                            isLoading: false,
-                            isExpanded: true,
-                            evalTime: durationSeconds,
-                        }
-                        : s
-                )
-            );
-        } catch (error) {
-            console.error("Error evaluating service:", error);
-            setServiceEvaluations((prev) =>
-                prev.map((s, idx) =>
-                    idx === serviceIndex
-                        ? {
-                            ...s,
-                            summary: "Error: Gagal mengevaluasi layanan.",
-                            evaluation: "Error: Gagal mengevaluasi layanan.",
-                            isLoading: false,
-                            evalTime: null,
-                        }
-                        : s
-                )
-            );
-        }
-    }
-
-    function toggleServiceExpansion(serviceIndex: number) {
-        setServiceEvaluations((prev) =>
-            prev.map((serviceEval, idx) =>
-                idx === serviceIndex
-                    ? { ...serviceEval, isExpanded: !serviceEval.isExpanded }
-                    : serviceEval
-            )
-        );
-    }
-
+const LLMSection: React.FC<LLMSectionProps> = ({
+    excelData,
+    serviceEvaluations,
+    onEvaluateService,
+    onToggleServiceExpansion,
+    searchQuery,
+    onSearchQueryChange,
+    sortMode,
+    onSortModeChange
+}) => {
     // Sorting logic
     const getSortedServices = () => {
         if (!excelData) return [];
@@ -227,37 +68,46 @@ PANDUAN ISI:
 
     return (
         <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Evaluasi AI</h2>
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Evaluasi AI</h2>
+                <div className="text-xs text-gray-500">
+                    {filteredServices.length} ICON dari {excelData?.services.length || 0} total
+                </div>
+            </div>
 
             {/* Search & Sort Controls */}
-            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center mb-6">
+            <div className="flex flex-col sm:flex-row gap-3 mb-6 p-4 bg-gray-50 rounded-lg">
                 <input
                     type="text"
                     placeholder="Cari nama ICON..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => onSearchQueryChange(e.target.value)}
+                    className="flex-1 rounded-md border-0 px-3 py-2 text-sm bg-white shadow-sm focus:ring-2 focus:ring-blue-500"
                 />
                 <div className="flex gap-2">
                     <button
-                        className={`px-3 py-2 rounded border text-sm ${sortMode === 'record' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${sortMode === 'record'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
-                        onClick={() => setSortMode('record')}
+                        onClick={() => onSortModeChange('record')}
                     >
-                        Record Terbanyak
+                        Terbanyak
                     </button>
                     <button
-                        className={`px-3 py-2 rounded border text-sm ${sortMode === 'durasi' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${sortMode === 'durasi'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
-                        onClick={() => setSortMode('durasi')}
+                        onClick={() => onSortModeChange('durasi')}
                     >
-                        Durasi Terpanjang
+                        Terlama
                     </button>
                 </div>
             </div>
 
             {/* Service List */}
-            <div className="space-y-4">
+            <div className="space-y-3">
                 {filteredServices.map((service, idx) => {
                     const evalIdx = serviceEvaluations.findIndex((s) => s.sid === service.sid);
                     const serviceEval = evalIdx >= 0 ? serviceEvaluations[evalIdx] : null;
@@ -269,102 +119,138 @@ PANDUAN ISI:
                         }
                         return {
                             value: displayVal,
-                            tiket: r.tiket_open ?? `#${i + 1}`
+                            tiket: r.tiket_open ?? `#${i + 1}`,
+                            rawValue: Number(val) || 0
                         };
                     });
-                    const maxDurasi = Math.max(...service.records.map((r: any) => Number(r.durasi_total) || 0));
-                    const maxDurasiDisplay = isFinite(maxDurasi) ? Math.round(maxDurasi) : '-';
+                    
+                    // Gunakan nilai maksimal dari durasiList untuk konsistensi
+                    const maxDurasi = Math.max(...durasiList.map(d => d.rawValue));
+                    const maxDurasiDisplay = isFinite(maxDurasi) && maxDurasi > 0 ? Math.round(maxDurasi) : 0;
+
+                    // Debug log untuk memeriksa data
+                    console.log(`Service: ${service.nama_service}`, {
+                        durasiList: durasiList.map(d => ({ tiket: d.tiket, value: d.value, raw: d.rawValue })),
+                        maxDurasi,
+                        maxDurasiDisplay
+                    });
 
                     return (
                         <div
                             key={`${service.nama_service}-${service.sid}`}
-                            className="border rounded-lg bg-white shadow-sm"
+                            className="border border-gray-200 rounded-lg bg-white hover:shadow-md transition-shadow"
                         >
-                            <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-semibold text-gray-800 text-base truncate">{service.nama_service}</span>
-                                        <span className="text-xs text-gray-400">SID: {service.sid}</span>
-                                    </div>
-                                    <div className="flex items-center gap-4 mb-2">
-                                        <span className="text-xs text-gray-500">{service.records.length} gangguan</span>
-                                        <span className="text-xs text-gray-500">Durasi terpanjang: <span className="font-semibold text-gray-700">{maxDurasiDisplay} mnt</span></span>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-[220px] text-xs border-separate border-spacing-y-1">
-                                            <thead>
-                                                <tr className="text-gray-500">
-                                                    <th className="text-left font-normal pr-2">Tiket</th>
-                                                    <th className="text-left font-normal">Durasi Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {durasiList.map((d, i) => (
-                                                    <tr key={i} className="bg-gray-50 hover:bg-gray-100">
-                                                        <td className="pr-2 text-gray-700">{d.tiket}</td>
-                                                        <td className="text-gray-900 font-medium">{d.value} mnt</td>
-                                                    </tr>
+                            <div className="p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <h3 className="font-semibold text-gray-900 text-sm truncate">{service.nama_service}</h3>
+                                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                                                SID: {service.sid}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-6 text-xs text-gray-600 mb-3">
+                                            <span className="flex items-center gap-1">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                                {service.records.length} gangguan
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                                                Terlama: {maxDurasiDisplay} menit
+                                            </span>
+                                        </div>
+
+                                        {/* Compact Duration Table */}
+                                        <div className="bg-gray-50 rounded-md p-3 max-h-32 overflow-y-auto">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-xs">
+                                                {durasiList.slice(0, 12).map((d, i) => (
+                                                    <div key={i} className="flex justify-between items-center bg-white rounded px-2 py-1">
+                                                        <span className="text-gray-600 truncate">{d.tiket}</span>
+                                                        <span className="font-medium text-gray-900 ml-1">{d.value}m</span>
+                                                    </div>
                                                 ))}
-                                            </tbody>
-                                        </table>
+                                                {durasiList.length > 12 && (
+                                                    <div className="flex items-center justify-center text-gray-400 text-xs col-span-full py-1">
+                                                        +{durasiList.length - 12} lainnya
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex flex-col gap-2 items-end min-w-[120px]">
-                                    {serviceEval && !serviceEval.summary && !serviceEval.isLoading && (
-                                        <button
-                                            onClick={() => evaluateService(evalIdx)}
-                                            className="px-3 py-1 bg-blue-600 text-white text-xs rounded shadow hover:bg-blue-700 transition"
-                                        >
-                                            Evaluasi
-                                        </button>
-                                    )}
-                                    {serviceEval && serviceEval.summary && (
-                                        <button
-                                            onClick={() => toggleServiceExpansion(evalIdx)}
-                                            className="p-1 text-gray-400 hover:text-blue-600"
-                                            title={serviceEval.isExpanded ? 'Sembunyikan' : 'Lihat hasil'}
-                                        >
-                                            {serviceEval.isExpanded ? (
-                                                <ChevronDownIcon className="h-5 w-5" />
-                                            ) : (
-                                                <ChevronRightIcon className="h-5 w-5" />
-                                            )}
-                                        </button>
-                                    )}
+
+                                    <div className="flex flex-col gap-2 items-end">
+                                        {serviceEval && !serviceEval.summary && !serviceEval.isLoading && (
+                                            <button
+                                                onClick={() => onEvaluateService(evalIdx)}
+                                                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md shadow-sm hover:bg-blue-700 transition-colors font-medium"
+                                            >
+                                                Evaluasi
+                                            </button>
+                                        )}
+                                        {serviceEval && serviceEval.summary && (
+                                            <button
+                                                onClick={() => onToggleServiceExpansion(evalIdx)}
+                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                title={serviceEval.isExpanded ? 'Sembunyikan' : 'Lihat hasil'}
+                                            >
+                                                {serviceEval.isExpanded ? (
+                                                    <ChevronDownIcon className="h-5 w-5" />
+                                                ) : (
+                                                    <ChevronRightIcon className="h-5 w-5" />
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             {serviceEval && serviceEval.dataContext && serviceEval.isExpanded && (
-                                <div className="px-4 pb-2">
-                                    <details className="text-xs text-gray-500 select-text">
-                                        <summary className="cursor-pointer">Lihat data context</summary>
-                                        <pre className="bg-gray-50 p-2 rounded border overflow-x-auto whitespace-pre-wrap mt-1">{serviceEval.dataContext}</pre>
+                                <div className="px-4 pb-3 border-t border-gray-100">
+                                    <details className="text-xs text-gray-500">
+                                        <summary className="cursor-pointer py-2 hover:text-gray-700">Lihat data context</summary>
+                                        <pre className="bg-gray-50 p-3 rounded-md border overflow-x-auto whitespace-pre-wrap mt-2 text-xs">{serviceEval.dataContext}</pre>
                                     </details>
                                 </div>
                             )}
                             {serviceEval && serviceEval.isLoading && (
-                                <div className="p-4 border-t bg-gray-50">
+                                <div className="p-4 border-t border-gray-100 bg-gray-50">
                                     <Spinner label="Mengevaluasi ICON..." />
                                 </div>
                             )}
                             {serviceEval && serviceEval.isExpanded && serviceEval.summary && (
-                                <div className="p-4 border-t bg-gray-50">
-                                    <div className="mb-2">
-                                        <span className="block text-xs text-gray-500 font-semibold mb-1">Rangkuman</span>
-                                        <div className="text-sm text-gray-800 whitespace-pre-wrap border-l-2 border-blue-200 pl-3">{serviceEval.summary}</div>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                                    <div className="grid lg:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
+                                                <span className="text-sm font-medium text-gray-900">Rangkuman</span>
+                                            </div>
+                                            <div className="text-sm text-gray-700 leading-relaxed max-h-40 overflow-y-auto bg-white p-3 rounded-md border">
+                                                {serviceEval.summary}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
+                                                <span className="text-sm font-medium text-gray-900">Evaluasi</span>
+                                            </div>
+                                            <div className="text-sm text-gray-700 leading-relaxed max-h-40 overflow-y-auto bg-white p-3 rounded-md border">
+                                                {serviceEval.evaluation}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="mb-2">
-                                        <span className="block text-xs text-gray-500 font-semibold mb-1">Evaluasi</span>
-                                        <div className="text-sm text-gray-800 whitespace-pre-wrap border-l-2 border-blue-200 pl-3">{serviceEval.evaluation}</div>
+                                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
+                                        {serviceEval.evalTime && (
+                                            <span className="text-xs text-gray-500">
+                                                Diproses dalam {serviceEval.evalTime.toFixed(1)}s
+                                            </span>
+                                        )}
+                                        <button
+                                            className="px-4 py-2 bg-white text-blue-700 border border-blue-200 rounded-md text-sm hover:bg-blue-50 transition-colors font-medium"
+                                            onClick={() => onEvaluateService(evalIdx)}
+                                        >
+                                            Evaluasi Ulang
+                                        </button>
                                     </div>
-                                    {serviceEval.evalTime && (
-                                        <div className="text-xs text-gray-400 mb-2">Waktu proses LLM: {serviceEval.evalTime.toFixed(2)} detik</div>
-                                    )}
-                                    <button
-                                        className="px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs hover:bg-blue-100 transition"
-                                        onClick={() => evaluateService(evalIdx)}
-                                    >
-                                        Ulangi Proses LLM
-                                    </button>
                                 </div>
                             )}
                         </div>
