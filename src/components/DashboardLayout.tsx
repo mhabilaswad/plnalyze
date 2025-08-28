@@ -10,17 +10,42 @@ import SentimentSection from "./SentimentSection";
 import type {
     ExcelProcessResult,
     ServiceEvaluation,
+    InferenceResult,
 } from "@/types";
 
-const DashboardLayout: React.FC = () => {
-    const [activeSection, setActiveSection] = useState<string>("prediction");
-    const [excelData, setExcelData] = useState<ExcelProcessResult | null>(null);
-    const [isUploading, setIsUploading] = useState<boolean>(false);
+export interface DashboardLayoutProps {
+    onFileUpload?: (file: File) => Promise<void>;
+    excelData?: any;
+    inference?: InferenceResult;
+    isUploading?: boolean;
+    activeSection?: string;
+    onSectionChange?: (section: string) => void;
+}
+
+const DashboardLayout: React.FC<DashboardLayoutProps> = ({
+    onFileUpload,
+    excelData: externalExcelData,
+    inference,
+    isUploading: externalIsUploading = false,
+    activeSection: externalActiveSection,
+    onSectionChange: externalOnSectionChange
+}) => {
+    const [internalActiveSection, setInternalActiveSection] = useState<string>("prediction");
+    const [internalExcelData, setInternalExcelData] = useState<ExcelProcessResult | null>(null);
+    const [internalIsUploading, setInternalIsUploading] = useState<boolean>(false);
+
+    // Use external state if provided, otherwise use internal
+    const activeSection = externalActiveSection ?? internalActiveSection;
+    const setActiveSection = externalOnSectionChange ?? setInternalActiveSection;
+    const excelData = externalExcelData ?? internalExcelData;
+    const isUploading = externalIsUploading || internalIsUploading;
 
     // LLM Section state only
     const [serviceEvaluations, setServiceEvaluations] = useState<ServiceEvaluation[]>([]);
     const [llmSearchQuery, setLlmSearchQuery] = useState<string>("");
-    const [llmSortMode, setLlmSortMode] = useState<'record' | 'durasi'>('record');    // Initialize service evaluations when excelData changes
+    const [llmSortMode, setLlmSortMode] = useState<'record' | 'durasi'>('record');
+
+    // Initialize service evaluations when excelData changes
     useEffect(() => {
         if (excelData?.services) {
             const sortedServices = [...excelData.services].sort(
@@ -40,8 +65,9 @@ const DashboardLayout: React.FC = () => {
         }
     }, [excelData]);
 
-    const handleFileUpload = useCallback(async (file: File) => {
-        setIsUploading(true);
+    // Internal file upload handler (fallback jika tidak ada external handler)
+    const handleInternalFileUpload = useCallback(async (file: File) => {
+        setInternalIsUploading(true);
         try {
             const formData = new FormData();
             formData.append("file", file);
@@ -56,19 +82,19 @@ const DashboardLayout: React.FC = () => {
                 throw new Error(result?.error || `HTTP ${response.status}`);
             }
 
-            setExcelData(result.data);
+            setInternalExcelData(result.data);
         } catch (error) {
             console.error("Upload error:", error);
             throw error;
         } finally {
-            setIsUploading(false);
+            setInternalIsUploading(false);
         }
-    }, []);    const handleEvaluateService = useCallback(async (serviceIndex: number) => {
+    }, []); const handleEvaluateService = useCallback(async (serviceIndex: number) => {
         if (!excelData || serviceIndex >= serviceEvaluations.length) return;
 
         // Cari service berdasarkan SID dari serviceEvaluations, bukan dari sorted services
         const targetServiceEval = serviceEvaluations[serviceIndex];
-        const service = excelData.services.find(s => s.sid === targetServiceEval.sid);
+        const service = excelData.services.find((s: any) => s.sid === targetServiceEval.sid);
 
         if (!service) {
             console.error('Service not found for SID:', targetServiceEval.sid);
@@ -84,7 +110,7 @@ const DashboardLayout: React.FC = () => {
         const startTime = performance.now();
         try {
             const header = `${service.nama_service} (${service.sid})`;
-            const rows = service.records.map((record) => {
+            const rows = service.records.map((record: any) => {
                 const tiket = record.tiket_open ?? "";
                 const durasi = record.durasi_menit ?? "";
                 const durasiTotal = record.durasi_total ?? durasi;
@@ -230,7 +256,7 @@ Jika data tidak lengkap, sebutkan "Data tidak tersedia" daripada membuat asumsi.
             case "prediction":
                 return <PredictionSection />;
             case "serpo":
-                return <SerpoEvaluationSection />;
+                return <SerpoEvaluationSection inference={inference} />;
             case "llm":
                 return (
                     <LLMSection
@@ -256,7 +282,7 @@ Jika data tidak lengkap, sebutkan "Data tidak tersedia" daripada membuat asumsi.
             <Sidebar
                 activeSection={activeSection}
                 onSectionChange={setActiveSection}
-                onFileUpload={handleFileUpload}
+                onFileUpload={onFileUpload || handleInternalFileUpload}
                 excelData={excelData}
                 isUploading={isUploading}
             />

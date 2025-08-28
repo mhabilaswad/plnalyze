@@ -132,6 +132,7 @@ export interface DaftarTim {
 	kasus_bermasalah?: number;
 	kategori_penyebab_dominan?: string;
 	prediksi_label?: string;
+	frekuensi_penyebab?: Record<string, number>; // Frekuensi setiap penyebab
 }
 
 export interface InferenceResult {

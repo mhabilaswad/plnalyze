@@ -9,51 +9,51 @@ export interface SerpoInferenceResultsProps {
 
 function getBadgeColors(label: string) {
     if (!label) return "bg-gray-100 text-gray-800 ring-gray-200";
-    
+
     const lower = label.toLowerCase().trim();
-    
+
     // Cek apakah label adalah "Bagus" (hijau)
     if (lower === "bagus" || lower === "baik" || lower === "good" || lower === "excellent") {
         return "bg-green-100 text-green-800 ring-green-200";
     }
-    
+
     // Cek apakah label adalah "Buruk" (merah)
     if (lower === "buruk" || lower === "bad" || lower === "poor") {
         return "bg-red-100 text-red-800 ring-red-200";
     }
-    
+
     // Default jika tidak cocok dengan pattern di atas
     return "bg-gray-100 text-gray-800 ring-gray-200";
 }
 
 function getIconColors(label: string) {
     if (!label) return "text-gray-600";
-    
+
     const lower = label.toLowerCase().trim();
-    
+
     // Hijau untuk kinerja bagus
     if (lower === "bagus" || lower === "baik" || lower === "good" || lower === "excellent") {
         return "text-green-600";
     }
-    
+
     // Merah untuk kinerja buruk
     if (lower === "buruk" || lower === "bad" || lower === "poor") {
         return "text-red-600";
     }
-    
+
     return "text-gray-600";
 }
 
 function getArrowIcon(label: string) {
     if (!label) return ArrowTrendingUpIcon;
-    
+
     const lower = label.toLowerCase().trim();
-    
+
     // Arrow ke bawah untuk kinerja buruk
     if (lower === "buruk" || lower === "bad" || lower === "poor") {
         return ArrowTrendingDownIcon;
     }
-    
+
     // Arrow ke atas untuk kinerja bagus atau default
     return ArrowTrendingUpIcon;
 }
@@ -81,6 +81,9 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
     // Download Excel function
     const handleDownloadExcel = async () => {
         try {
+            console.log('Starting Excel download...'); // Debug log
+            console.log('Inference data:', inference); // Debug log
+
             const response = await fetch('/api/download-excel', {
                 method: 'POST',
                 headers: {
@@ -89,35 +92,60 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                 body: JSON.stringify({ inference }),
             });
 
+            console.log('Response status:', response.status); // Debug log
+            console.log('Response headers:', Object.fromEntries(response.headers.entries())); // Debug log
+
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error('API Error:', errorText);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+            }
+
+            // Check if response is actually a blob (Excel file)
+            const contentType = response.headers.get('content-type');
+            console.log('Content-Type:', contentType); // Debug log
+
+            if (contentType && contentType.includes('application/json')) {
+                // If we get JSON, it's probably an error
+                const errorData = await response.json();
+                console.error('API returned JSON error:', errorData);
+                throw new Error(errorData.error || 'Unknown error from API');
             }
 
             // Get the blob from response
             const blob = await response.blob();
-            
+            console.log('Blob size:', blob.size); // Debug log
+
+            if (blob.size === 0) {
+                throw new Error('Received empty file');
+            }
+
             // Create download link
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            
+
             // Get filename from response headers or use default
             const contentDisposition = response.headers.get('content-disposition');
-            const filename = contentDisposition 
+            const filename = contentDisposition
                 ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
                 : `Rekap_Kinerja_SERPO_${new Date().toISOString().slice(0, 10)}.xlsx`;
-            
+
+            console.log('Downloading file:', filename); // Debug log
+
             link.download = filename;
             document.body.appendChild(link);
             link.click();
-            
+
             // Cleanup
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
-            
+
+            console.log('Download completed successfully'); // Debug log
+
         } catch (error) {
             console.error('Download error:', error);
-            alert('Gagal mengunduh file Excel. Silakan coba lagi.');
+            alert(`Gagal mengunduh file Excel: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 
@@ -352,8 +380,8 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                         const tim = inference.daftar_tim.find(t => t.nama_tim === selectedTim);
                                         const frekuensiPenyebab = tim?.frekuensi_penyebab || {};
                                         const sortedPenyebab = Object.entries(frekuensiPenyebab)
-                                            .sort(([,a], [,b]) => (b as number) - (a as number));
-                                        
+                                            .sort(([, a], [, b]) => (b as number) - (a as number));
+
                                         return sortedPenyebab.length > 0 ? (
                                             sortedPenyebab.map(([penyebab, count], index) => {
                                                 const isTop = index === 0;
@@ -362,7 +390,7 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                                 const shortText = isLong ? penyebab.substring(0, 30) + '...' : penyebab;
                                                 const expandKey = `penyebab_${selectedTim}_${index}`;
                                                 const isExpanded = expanded[expandKey];
-                                                
+
                                                 return (
                                                     <div key={penyebab} className={`py-3 px-4 rounded-lg ${isTop ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50 border border-gray-100'}`}>
                                                         <div className="flex justify-between items-start gap-3">
@@ -385,7 +413,7 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                                                             )}
                                                                         </div>
                                                                     </div>
-                                                                    
+
                                                                     {/* Tooltip untuk hover pada teks pendek */}
                                                                     {isLong && !isExpanded && (
                                                                         <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-20">
@@ -396,13 +424,13 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                                
+
                                                                 {/* Tombol expand/collapse untuk teks panjang */}
                                                                 {isLong && (
                                                                     <button
-                                                                        onClick={() => setExpanded(prev => ({ 
-                                                                            ...prev, 
-                                                                            [expandKey]: !prev[expandKey] 
+                                                                        onClick={() => setExpanded(prev => ({
+                                                                            ...prev,
+                                                                            [expandKey]: !prev[expandKey]
                                                                         }))}
                                                                         className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded mt-2 transition-colors"
                                                                     >
@@ -411,7 +439,7 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            
+
                                                             <div className="text-right flex-shrink-0 ml-3">
                                                                 <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${isTop ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
                                                                     <span className="font-bold">{count as number}</span>
@@ -446,8 +474,8 @@ const SerpoInferenceResults: React.FC<SerpoInferenceResultsProps> = ({ inference
                                         const isCompliant = tim && tim.durasi_rata2 < 4; // 4 jam threshold
                                         return (
                                             <div className={`inline-flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium ${isCompliant
-                                                    ? "bg-green-100 text-green-800 border border-green-200"
-                                                    : "bg-amber-100 text-amber-800 border border-amber-200"
+                                                ? "bg-green-100 text-green-800 border border-green-200"
+                                                : "bg-amber-100 text-amber-800 border border-amber-200"
                                                 }`}>
                                                 <div className={`w-3 h-3 rounded-full ${isCompliant ? "bg-green-500" : "bg-amber-500"
                                                     }`}></div>

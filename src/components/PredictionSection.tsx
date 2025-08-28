@@ -37,15 +37,15 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 	const [lastGlobalDate, setLastGlobalDate] = useState<string | null>(null);
 	const [maeScore, setMaeScore] = useState<number | null>(null);
 	const [localForecastData, setLocalForecastData] = useState<ForecastAPIResponse | null>(null);
-    const [modelServices, setModelServices] = useState<string[]>([]);
-    const [modelsMeta, setModelsMeta] = useState<Record<string, { mae?: number | null; last_trained_at?: string | null; last_data_date?: string | null }>>({});
-    const [query, setQuery] = useState<string>("");
-    const [historyVisible, setHistoryVisible] = useState<boolean>(true);
-    const chartRef = useRef<any>(null);
-    
-    // Internal state for services and forecast data
-    const [services, setServices] = useState<string[]>([]);
-    const [forecastData, setForecastData] = useState<ForecastAPIResponse | null>(null);
+	const [modelServices, setModelServices] = useState<string[]>([]);
+	const [modelsMeta, setModelsMeta] = useState<Record<string, { mae?: number | null; last_trained_at?: string | null; last_data_date?: string | null }>>({});
+	const [query, setQuery] = useState<string>("");
+	const [historyVisible, setHistoryVisible] = useState<boolean>(true);
+	const chartRef = useRef<any>(null);
+
+	// Internal state for services and forecast data
+	const [services, setServices] = useState<string[]>([]);
+	const [forecastData, setForecastData] = useState<ForecastAPIResponse | null>(null);
 
 	function formatISO(dateInput: string | Date | null | undefined): string {
 		if (!dateInput) return "-";
@@ -76,7 +76,7 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 						.sort((a: string, b: string) => a.localeCompare(b));
 
 					const metaMap: Record<string, { mae?: number | null; last_trained_at?: string | null; last_data_date?: string | null }> = {};
-					
+
 					// Get metadata and find latest data date
 					let latestDate: string | null = null;
 					(modelsJson.models || []).forEach((m: any) => {
@@ -311,16 +311,16 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 			// Get forecast dataset (last dataset)
 			const forecastDataset = chartFromForecast.datasets?.[chartFromForecast.datasets.length - 1];
 			if (!forecastDataset?.data) return { maxValue: 0, maxLabel: "", avg: 0 };
-			
+
 			// Filter out null values and get only forecast values
 			const forecastValues = (forecastDataset.data as any[]).filter((v) => typeof v === "number");
 			if (!forecastValues?.length) return { maxValue: 0, maxLabel: "", avg: 0 };
-			
+
 			const maxValue = Math.max(...(forecastValues as number[]));
-			
+
 			// Find the index of max value in the original dataset array
 			const maxIdx = (forecastDataset.data as any[]).findIndex((v) => v === maxValue);
-			
+
 			// Get the corresponding label from the labels array
 			const maxLabel = chartFromForecast.labels?.[maxIdx] || "";
 			const avg = (forecastValues as number[]).reduce((a, b) => a + b, 0) / (forecastValues as number[]).length;

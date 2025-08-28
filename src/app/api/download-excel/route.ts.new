@@ -7,10 +7,10 @@ import type { InferenceResult } from "@/types";
 export async function POST(req: NextRequest) {
     try {
         console.log('Download Excel API called'); // Debug log
-
+        
         const body = await req.json();
         const inference: InferenceResult = body.inference;
-
+        
         console.log('Received inference data:', JSON.stringify(inference, null, 2)); // Debug log
 
         if (!inference) {
@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
             [''],
             [
                 'No Tiket',
-                'Nama Service',
+                'Nama Service', 
                 'SID',
                 'Tim SERPO',
                 'Durasi (Menit)',
-                'Durasi (Jam)',
+                'Durasi (Jam)', 
                 'Penyebab',
                 'Kategori Penyebab',
                 'Keterangan',
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         });
 
         const kasusSheet = XLSX.utils.aoa_to_sheet(kasusData);
-
+        
         // Set column widths for kasus sheet
         kasusSheet['!cols'] = [
             { width: 15 }, // No Tiket
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
         });
 
         const ringkasanSheet = XLSX.utils.aoa_to_sheet(ringkasanData);
-
+        
         // Set column widths for ringkasan
         ringkasanSheet['!cols'] = [
             { width: 20 }, // Nama Tim
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
                 [
                     'No Tiket',
                     'Nama Service',
-                    'SID',
+                    'SID', 
                     'Durasi (Menit)',
                     'Durasi (Jam)',
                     'Penyebab',
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
 
             // Filter kasus untuk tim ini
             const kasusPerTim = inference.detail_kasus?.filter(kasus => kasus.tim_serpo === tim.nama_tim) || [];
-
+            
             kasusPerTim.forEach(kasus => {
                 const statusSLA = (kasus.durasi_jam ?? 0) < 4 ? 'Patuh SLA' : 'Tidak Patuh SLA';
                 kasusTimData.push([
@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
             });
 
             const timSheet = XLSX.utils.aoa_to_sheet(kasusTimData);
-
+            
             // Set column widths
             timSheet['!cols'] = [
                 { width: 15 }, // No Tiket
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
                 const durasiJam = kasus.durasi_jam ?? 0;
                 const selisih = durasiJam - targetSLA;
                 const statusSLA = durasiJam <= targetSLA ? 'Patuh SLA' : 'Tidak Patuh SLA';
-
+                
                 slaData.push([
                     kasus.no_tiket ?? '',
                     kasus.tim_serpo ?? '',
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
         }
 
         const slaSheet = XLSX.utils.aoa_to_sheet(slaData);
-
+        
         // Set column widths for SLA
         slaSheet['!cols'] = [
             { width: 15 }, // No Tiket
@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
         });
 
         const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
-
+        
         // Set column widths for detail
         detailSheet['!cols'] = [
             { width: 20 }, // Nama Tim
@@ -270,10 +270,10 @@ export async function POST(req: NextRequest) {
         ];
 
         // Generate Excel buffer
-        const excelBuffer = XLSX.write(workbook, {
-            bookType: 'xlsx',
+        const excelBuffer = XLSX.write(workbook, { 
+            bookType: 'xlsx', 
             type: 'buffer',
-            compression: true
+            compression: true 
         });
 
         console.log('Excel buffer created, size:', excelBuffer.length); // Debug log
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         console.error("/api/download-excel error:", error);
         console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
-        return NextResponse.json({
+        return NextResponse.json({ 
             error: "Gagal membuat file Excel",
             details: error instanceof Error ? error.message : "Unknown error"
         }, { status: 500 });

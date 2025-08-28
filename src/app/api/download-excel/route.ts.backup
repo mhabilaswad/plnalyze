@@ -3,14 +3,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from 'xlsx';
 import type { InferenceResult } from "@/types";
+                    kasus.penyebab ?? '',
+                    kasus.kategori_penyebab ?? '',
+                    kasus.keterangan ?? '',
+                    kasus.prediksi_kinerja ?? '',
+                    String(kasus.ada_kendala) === 'Ya' || String(kasus.ada_kendala) === 'true' ? 'Ya' : 'Tidak',
+                    statusSLA
+                ]);
+            });sponse } from "next/server";
+import * as XLSX from 'xlsx';
+import type { InferenceResult } from "@/types";
 
 export async function POST(req: NextRequest) {
     try {
         console.log('Download Excel API called'); // Debug log
-
+        
         const body = await req.json();
         const inference: InferenceResult = body.inference;
-
+        
         console.log('Received inference data:', JSON.stringify(inference, null, 2)); // Debug log
 
         if (!inference) {
@@ -48,11 +58,11 @@ export async function POST(req: NextRequest) {
             [''],
             [
                 'No Tiket',
-                'Nama Service',
+                'Nama Service', 
                 'SID',
                 'Tim SERPO',
                 'Durasi (Menit)',
-                'Durasi (Jam)',
+                'Durasi (Jam)', 
                 'Penyebab',
                 'Kategori Penyebab',
                 'Keterangan',
@@ -83,7 +93,7 @@ export async function POST(req: NextRequest) {
         });
 
         const kasusSheet = XLSX.utils.aoa_to_sheet(kasusData);
-
+        
         // Set column widths for kasus sheet
         kasusSheet['!cols'] = [
             { width: 15 }, // No Tiket
@@ -122,7 +132,7 @@ export async function POST(req: NextRequest) {
         });
 
         const ringkasanSheet = XLSX.utils.aoa_to_sheet(ringkasanData);
-
+        
         // Set column widths for ringkasan
         ringkasanSheet['!cols'] = [
             { width: 20 }, // Nama Tim
@@ -143,7 +153,7 @@ export async function POST(req: NextRequest) {
                 [
                     'No Tiket',
                     'Nama Service',
-                    'SID',
+                    'SID', 
                     'Durasi (Menit)',
                     'Durasi (Jam)',
                     'Penyebab',
@@ -157,26 +167,26 @@ export async function POST(req: NextRequest) {
 
             // Filter kasus untuk tim ini
             const kasusPerTim = inference.detail_kasus?.filter(kasus => kasus.tim_serpo === tim.nama_tim) || [];
-
+            
             kasusPerTim.forEach(kasus => {
-                const statusSLA = (kasus.durasi_jam ?? 0) < 4 ? 'Patuh SLA' : 'Tidak Patuh SLA';
+                const statusSLA = (kasus.durasi_jam || 0) < 4 ? 'Patuh SLA' : 'Tidak Patuh SLA';
                 kasusTimData.push([
-                    kasus.no_tiket ?? '',
-                    kasus.nama_service ?? '',
-                    kasus.sid ?? '',
-                    (kasus.durasi_menit ?? 0).toString(),
-                    (kasus.durasi_jam ?? 0).toFixed(2),
-                    kasus.penyebab ?? '',
-                    kasus.kategori_penyebab ?? '',
-                    kasus.keterangan ?? '',
-                    kasus.prediksi_kinerja ?? '',
+                    kasus.no_tiket || '',
+                    kasus.nama_service || '',
+                    kasus.sid || '',
+                    (kasus.durasi_menit || 0).toString(),
+                    (kasus.durasi_jam || 0).toFixed(2),
+                    kasus.penyebab || '',
+                    kasus.kategori_penyebab || '',
+                    kasus.keterangan || '',
+                    kasus.prediksi_kinerja || '',
                     String(kasus.ada_kendala) === 'Ya' || String(kasus.ada_kendala) === 'true' ? 'Ya' : 'Tidak',
                     statusSLA
                 ]);
             });
 
             const timSheet = XLSX.utils.aoa_to_sheet(kasusTimData);
-
+            
             // Set column widths
             timSheet['!cols'] = [
                 { width: 15 }, // No Tiket
@@ -209,14 +219,14 @@ export async function POST(req: NextRequest) {
         if (inference.detail_kasus) {
             inference.detail_kasus.forEach(kasus => {
                 const targetSLA = 4;
-                const durasiJam = kasus.durasi_jam ?? 0;
+                const durasiJam = kasus.durasi_jam || 0;
                 const selisih = durasiJam - targetSLA;
                 const statusSLA = durasiJam <= targetSLA ? 'Patuh SLA' : 'Tidak Patuh SLA';
-
+                
                 slaData.push([
-                    kasus.no_tiket ?? '',
-                    kasus.tim_serpo ?? '',
-                    kasus.nama_service ?? '',
+                    kasus.no_tiket || '',
+                    kasus.tim_serpo || '',
+                    kasus.nama_service || '',
                     durasiJam.toFixed(2),
                     statusSLA,
                     selisih.toFixed(2)
@@ -225,7 +235,7 @@ export async function POST(req: NextRequest) {
         }
 
         const slaSheet = XLSX.utils.aoa_to_sheet(slaData);
-
+        
         // Set column widths for SLA
         slaSheet['!cols'] = [
             { width: 15 }, // No Tiket
@@ -238,7 +248,7 @@ export async function POST(req: NextRequest) {
 
         XLSX.utils.book_append_sheet(workbook, slaSheet, "Analisis SLA");
 
-        // Sheet 5: Detail Tim
+        // Sheet 2: Detail Tim
         const detailData = [
             ['DETAIL KINERJA TIM SERPO'],
             [''],
@@ -246,19 +256,19 @@ export async function POST(req: NextRequest) {
         ];
 
         inference.daftar_tim.forEach(tim => {
-            const statusSLA = (tim.durasi_rata2 ?? 0) < 4 ? 'Patuh SLA' : 'Perlu Perbaikan';
+            const statusSLA = (tim.durasi_rata2 || 0) < 4 ? 'Patuh SLA' : 'Perlu Perbaikan';
             detailData.push([
-                tim.nama_tim ?? '',
-                (tim.jumlah_kasus ?? 0).toString(),
-                (tim.durasi_rata2 ?? 0).toFixed(2),
-                tim.kinerja_mayoritas ?? '',
-                tim.penyebab_mayoritas ?? '',
+                tim.nama_tim || '',
+                (tim.jumlah_kasus || 0).toString(),
+                (tim.durasi_rata2 || 0).toFixed(2),
+                tim.kinerja_mayoritas || '',
+                tim.penyebab_mayoritas || '',
                 statusSLA
             ]);
         });
 
         const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
-
+        
         // Set column widths for detail
         detailSheet['!cols'] = [
             { width: 20 }, // Nama Tim
@@ -270,10 +280,10 @@ export async function POST(req: NextRequest) {
         ];
 
         // Generate Excel buffer
-        const excelBuffer = XLSX.write(workbook, {
-            bookType: 'xlsx',
+        const excelBuffer = XLSX.write(workbook, { 
+            bookType: 'xlsx', 
             type: 'buffer',
-            compression: true
+            compression: true 
         });
 
         console.log('Excel buffer created, size:', excelBuffer.length); // Debug log
@@ -297,7 +307,7 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         console.error("/api/download-excel error:", error);
         console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
-        return NextResponse.json({
+        return NextResponse.json({ 
             error: "Gagal membuat file Excel",
             details: error instanceof Error ? error.message : "Unknown error"
         }, { status: 500 });
