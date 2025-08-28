@@ -14,7 +14,7 @@ import {
 	Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { ArrowPathIcon, PlayIcon, PauseIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, PlayIcon, PauseIcon, InformationCircleIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -54,12 +54,70 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		return `${y}-${m}-${day}`;
 	}
 
+	// Get model quality based on MAE score
+	function getModelQuality(mae: number | null): { label: string; color: string; bgColor: string; description: string } {
+		if (mae === null || mae === undefined) {
+			return {
+				label: "Belum Tersedia",
+				color: "text-gray-600",
+				bgColor: "bg-gray-100/50",
+				description: "evaluasi belum dilakukan"
+			};
+		}
+
+		if (mae <= 20) {
+			return {
+				label: "Sangat Baik",
+				color: "text-green-700",
+				bgColor: "bg-green-100/50",
+				description: "akurasi sangat tinggi"
+			};
+		} else if (mae <= 40) {
+			return {
+				label: "Baik",
+				color: "text-blue-700",
+				bgColor: "bg-blue-100/50",
+				description: "akurasi tinggi"
+			};
+		} else if (mae <= 60) {
+			return {
+				label: "Cukup Baik",
+				color: "text-yellow-700",
+				bgColor: "bg-yellow-100/50",
+				description: "akurasi memadai"
+			};
+		} else if (mae <= 80) {
+			return {
+				label: "Perlu Perbaikan",
+				color: "text-orange-700",
+				bgColor: "bg-orange-100/50",
+				description: "akurasi rendah"
+			};
+		} else if (mae <= 100) {
+			return {
+				label: "Kurang Baik",
+				color: "text-red-600",
+				bgColor: "bg-red-100/50",
+				description: "akurasi sangat rendah"
+			};
+		} else {
+			return {
+				label: "Sangat Buruk",
+				color: "text-red-800",
+				bgColor: "bg-red-200/50",
+				description: "perlu pelatihan ulang"
+			};
+		}
+	}
+
 	// Auto-cycling state for demo mode
 	const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
 	const [currentServiceIndex, setCurrentServiceIndex] = useState<number>(0);
 	const [autoModeInterval, setAutoModeInterval] = useState<NodeJS.Timeout | null>(null);
 	const [fadeClass, setFadeClass] = useState<string>("opacity-100");
 	const [nextUpdateTime, setNextUpdateTime] = useState<Date | null>(null);
+	const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+	const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
 	// default to first detected service from uploaded data; else fetch from backend Excel
 	useEffect(() => {
@@ -139,32 +197,45 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 						const nextService = modelServices[nextIndex];
 						setSelectedService(nextService);
 						loadForecastForService(nextService);
+						// Reset next update time for new cycle
+						setNextUpdateTime(new Date(Date.now() + 60000));
+						setCountdownSeconds(60);
 						return nextIndex;
 					});
 					// Fade in
 					setTimeout(() => setFadeClass("opacity-100"), 100);
 				}, 300);
-			}, 600000); // 10 minutes = 600000ms
+			}, 60000); // 1 minute = 60000ms
 
-			// Set next update time
-			setNextUpdateTime(new Date(Date.now() + 600000));
+			// Set initial next update time and countdown
+			setNextUpdateTime(new Date(Date.now() + 60000));
+			setCountdownSeconds(60);
 			setAutoModeInterval(interval);
 			return () => {
 				if (interval) clearInterval(interval);
 			};
+		} else {
+			// Clear timer when auto mode is disabled
+			setNextUpdateTime(null);
+			setCountdownSeconds(0);
 		}
 	}, [isAutoMode, modelServices]);
 
-	// Update next update time every minute when in auto mode
+	// Update countdown every second when in auto mode
 	useEffect(() => {
-		if (isAutoMode && nextUpdateTime) {
+		if (isAutoMode && countdownSeconds > 0) {
 			const timer = setInterval(() => {
-				// This will trigger re-render to show countdown
-			}, 60000); // Update every minute
+				setCountdownSeconds(prev => {
+					if (prev <= 1) {
+						return 0; // Will be reset by the main auto-cycle timer
+					}
+					return prev - 1;
+				});
+			}, 1000); // Update every 1 second
 
 			return () => clearInterval(timer);
 		}
-	}, [isAutoMode, nextUpdateTime]);
+	}, [isAutoMode, countdownSeconds > 0]);
 
 	// Auto-load forecast function
 	const loadForecastForService = async (service: string) => {
@@ -194,6 +265,7 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		if (!selectedService) return;
 		// Disable auto mode when user manually requests forecast
 		setIsAutoMode(false);
+		setCountdownSeconds(0);
 		if (autoModeInterval) {
 			clearInterval(autoModeInterval);
 			setAutoModeInterval(null);
@@ -205,6 +277,7 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		if (!selectedService) return;
 		// Disable auto mode during training
 		setIsAutoMode(false);
+		setCountdownSeconds(0);
 		if (autoModeInterval) {
 			clearInterval(autoModeInterval);
 			setAutoModeInterval(null);
@@ -383,12 +456,16 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		return { maxValue: 0, maxLabel: "", avg: 0 };
 	}, [chartFromForecast]);
 
+	// Get model quality info
+	const modelQuality = useMemo(() => getModelQuality(maeScore), [maeScore]);
+
 	// Toggle auto mode function
 	const toggleAutoMode = () => {
 		if (isAutoMode) {
 			// Turn off auto mode
 			setIsAutoMode(false);
 			setNextUpdateTime(null);
+			setCountdownSeconds(0);
 			if (autoModeInterval) {
 				clearInterval(autoModeInterval);
 				setAutoModeInterval(null);
@@ -396,63 +473,138 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		} else {
 			// Turn on auto mode
 			setIsAutoMode(true);
-			setNextUpdateTime(new Date(Date.now() + 600000));
+			// Timer will be set in the useEffect above
 		}
 	};
 
 	// Format time remaining until next update
 	const getTimeUntilNextUpdate = (): string => {
-		if (!nextUpdateTime || !isAutoMode) return "";
-		const now = new Date();
-		const diff = nextUpdateTime.getTime() - now.getTime();
-		if (diff <= 0) return "Updating...";
-		const minutes = Math.floor(diff / 60000);
-		return `${minutes}m`;
+		if (!isAutoMode || countdownSeconds <= 0) return "";
+		if (countdownSeconds <= 1) return "Memperbarui...";
+		return `${countdownSeconds}d`;
 	};
 
 	return (
 		<section className="bg-white rounded-xl shadow-sm p-6">
-			<div className="mb-4 flex items-center justify-between">
+			{/* Tombol untuk menampilkan/menyembunyikan penjelasan */}
+			<div className="mb-4">
+				<button
+					onClick={() => setShowExplanation(!showExplanation)}
+					className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all duration-200"
+				>
+					<InformationCircleIcon className="h-4 w-4" />
+					<span>Tentang Forecasting</span>
+					{showExplanation ? (
+						<ChevronUpIcon className="h-4 w-4" />
+					) : (
+						<ChevronDownIcon className="h-4 w-4" />
+					)}
+				</button>
+			</div>
+
+			{/* Penjelasan Forecasting - Collapsible */}
+			{showExplanation && (
+				<div className="mb-6 p-6 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-xl shadow-sm transition-all duration-300">
+					<div className="flex items-start">
+						<div className="flex-shrink-0">
+							<div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+								<span className="text-white text-lg">🤖</span>
+							</div>
+						</div>
+						<div className="ml-4">
+							<h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+								AI Forecasting System
+								<span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">ACTIVE</span>
+							</h3>
+							<p className="text-sm text-gray-700 leading-relaxed mb-4">
+								Sistem AI memprediksi <strong className="text-blue-700">durasi rata-rata waktu penanganan gangguan per minggu</strong> untuk setiap layanan ICON 
+								berdasarkan data historis. Prediksi membantu tim SERPO dalam perencanaan kapasitas dan alokasi resources 
+								untuk memberikan layanan terbaik kepada pelanggan PLN.
+							</p>
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+								<div className="bg-white/60 backdrop-blur border border-blue-200 px-3 py-2 rounded-lg flex items-center gap-2">
+									<span className="text-blue-600">📈</span>
+									<span className="text-blue-800 font-medium">Analisis Trend Mingguan</span>
+								</div>
+								<div className="bg-white/60 backdrop-blur border border-blue-200 px-3 py-2 rounded-lg flex items-center gap-2">
+									<span className="text-green-600">🎯</span>
+									<span className="text-green-800 font-medium">Akurasi Tinggi (MAE)</span>
+								</div>
+								<div className="bg-white/60 backdrop-blur border border-blue-200 px-3 py-2 rounded-lg flex items-center gap-2">
+									<span className="text-purple-600">⚡</span>
+									<span className="text-purple-800 font-medium">Real-time Processing</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
+
+			<div className="mb-6 flex items-center justify-between bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl p-4 border border-gray-200">
 				<div>
-					<h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+					<h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+						<div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
+							<span className="text-white text-sm">🤖</span>
+						</div>
 						PLN Analytics - AI Forecasting System
 						{isFetching && (
 							<ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
 						)}
 					</h2>
-					<p className="text-sm text-gray-500">
+					<p className="text-sm text-gray-600 mt-1 ml-11">
 						{activeForecast?.service
-							? `ICON: ${activeForecast.service}${activeForecast.tim_serpo ? ` · ${activeForecast.tim_serpo}` : ""}`
-							: "Real-time automated forecasting untuk berbagai layanan ICON"}
+							? (
+								<span className="flex items-center gap-2">
+									<span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+									<strong className="text-gray-800">ICON:</strong> {activeForecast.service}
+									{activeForecast.tim_serpo && (
+										<>
+											<span className="text-gray-400">•</span>
+											<span className="text-blue-600 font-medium">{activeForecast.tim_serpo}</span>
+										</>
+									)}
+								</span>
+							)
+							: "Real-time automated forecasting untuk berbagai layanan ICON PLN"}
 					</p>
 				</div>
 				<div className="flex items-center gap-3">
+					{/* Auto Mode Toggle */}
 					<button
 						onClick={toggleAutoMode}
-						className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+						className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-md hover:shadow-lg ${
 							isAutoMode
-								? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg hover:shadow-xl"
-								: "bg-gradient-to-r from-gray-200 to-gray-300 text-gray-700 hover:from-gray-300 hover:to-gray-400"
+								? "bg-gradient-to-r from-emerald-500 to-green-600 text-white"
+								: "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300"
 						}`}
 					>
 						{isAutoMode ? (
 							<>
 								<PauseIcon className="h-4 w-4" />
-								<span>Auto Mode</span>
+								<span>Mode Otomatis</span>
 							</>
 						) : (
 							<>
 								<PlayIcon className="h-4 w-4" />
-								<span>Manual</span>
+								<span>Mode Manual</span>
 							</>
 						)}
 					</button>
+					
+					{/* Auto Mode Status */}
 					{isAutoMode && modelServices.length > 0 && (
-						<div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
-							<div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-							<span>{currentServiceIndex + 1}/{modelServices.length}</span>
-							{getTimeUntilNextUpdate() && (
-								<span className="ml-1 text-gray-500">· {getTimeUntilNextUpdate()}</span>
+						<div className="flex items-center gap-3 bg-white/80 backdrop-blur-sm border border-green-200 px-4 py-2 rounded-xl shadow-sm">
+							<div className="flex items-center gap-2 text-xs text-gray-700">
+								<div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+								<span className="font-medium">Layanan {currentServiceIndex + 1}/{modelServices.length}</span>
+							</div>
+							{countdownSeconds > 0 && (
+								<div className="flex items-center gap-1 text-xs">
+									<span className="text-gray-500">Berikutnya:</span>
+									<span className="bg-green-100 text-green-700 px-2 py-1 rounded-md font-mono font-bold">
+										{getTimeUntilNextUpdate()}
+									</span>
+								</div>
 							)}
 						</div>
 					)}
@@ -460,40 +612,48 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 			</div>
 
 			<div className={`transition-opacity duration-300 ${fadeClass}`}>
-				<div className="mb-4 grid grid-cols-1 gap-3">
-					<div>
-						<label className="block text-sm font-medium text-gray-700 mb-1">ICON Service</label>
-						<div className="flex items-center gap-2 mb-2">
+				<div className="mb-6 grid grid-cols-1 gap-4">
+					{/* Service Selection Card */}
+					<div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+						<label className="block text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+							<span className="w-5 h-5 bg-blue-500 rounded-md flex items-center justify-center">
+								<span className="text-white text-xs">🎯</span>
+							</span>
+							Pilih Layanan ICON
+						</label>
+						<div className="flex items-center gap-3 mb-3">
 							<input
 								type="text"
-								placeholder="Cari ICON..."
+								placeholder="🔍 Cari ICON service..."
 								value={query}
 								onChange={(e) => {
 									setQuery(e.target.value);
 									setIsAutoMode(false);
 									setNextUpdateTime(null);
+									setCountdownSeconds(0);
 									if (autoModeInterval) {
 										clearInterval(autoModeInterval);
 										setAutoModeInterval(null);
 									}
 								}}
-								className="w-full rounded-lg border-2 border-gray-200 px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+								className="flex-1 rounded-lg border-2 border-blue-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 bg-white/80 backdrop-blur-sm"
 							/>
 							<button
 								type="button"
 								onClick={() => { setQuery(""); setSelectedService(""); }}
-								className="px-3 py-2 text-xs rounded-lg border-2 border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+								className="px-4 py-2.5 text-xs rounded-lg border-2 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 font-medium"
 							>
-								Clear
+								Hapus
 							</button>
 						</div>
 						<select
-							className="w-full rounded-lg border-2 border-gray-200 px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+							className="w-full rounded-lg border-2 border-blue-200 px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 bg-white/80 backdrop-blur-sm font-medium"
 							value={selectedService}
 							onChange={(e) => {
 								setSelectedService(e.target.value);
 								setIsAutoMode(false);
 								setNextUpdateTime(null);
+								setCountdownSeconds(0);
 								if (autoModeInterval) {
 									clearInterval(autoModeInterval);
 									setAutoModeInterval(null);
@@ -507,35 +667,45 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 								))}
 						</select>
 					</div>
-					<div className="flex gap-3">
-						<button
-							onClick={handleTrainClick}
-							disabled={!selectedService || isTraining}
-							className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm rounded-lg hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
-						>
-							{isTraining ? (
-								<>
-									<ArrowPathIcon className="h-4 w-4 animate-spin" />
-									<span>Training...</span>
-								</>
-							) : (
-								<span>🚀 Train Model</span>
-							)}
-						</button>
-						<button
-							onClick={handleForecastClick}
-							disabled={!selectedService || isFetching}
-							className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm rounded-lg hover:from-green-600 hover:to-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
-						>
-							{isFetching ? (
-								<>
-									<ArrowPathIcon className="h-4 w-4 animate-spin" />
-									<span>Loading...</span>
-								</>
-							) : (
-								<span>📊 Get Forecast</span>
-							)}
-						</button>
+
+					{/* Action Buttons Card */}
+					<div className="bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl p-4">
+						<div className="flex gap-3">
+							<button
+								onClick={handleTrainClick}
+								disabled={!selectedService || isTraining}
+								className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+							>
+								{isTraining ? (
+									<>
+										<ArrowPathIcon className="h-4 w-4 animate-spin" />
+										<span>Melatih Model...</span>
+									</>
+								) : (
+									<>
+										<span className="text-lg">🚀</span>
+										<span>Latih Model AI</span>
+									</>
+								)}
+							</button>
+							<button
+								onClick={handleForecastClick}
+								disabled={!selectedService || isFetching}
+								className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm rounded-xl hover:from-emerald-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+							>
+								{isFetching ? (
+									<>
+										<ArrowPathIcon className="h-4 w-4 animate-spin" />
+										<span>Memuat Prediksi...</span>
+									</>
+								) : (
+									<>
+										<span className="text-lg">📊</span>
+										<span>Buat Prediksi</span>
+									</>
+								)}
+							</button>
+						</div>
 					</div>
 				</div>
 
@@ -565,104 +735,189 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 				)}
 
 				{!hasData ? (
-					<div className="rounded-xl border-2 border-dashed border-gray-300 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8 text-center">
-						<div className="mx-auto max-w-md">
-							<div className="mb-6">
-								<div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
-									<ArrowPathIcon className="h-8 w-8 text-white animate-spin" />
+					<div className="rounded-2xl border-2 border-dashed border-blue-300 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-12 text-center shadow-inner">
+						<div className="mx-auto max-w-lg">
+							<div className="mb-8">
+								<div className="mx-auto w-20 h-20 bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700 rounded-2xl flex items-center justify-center shadow-xl">
+									{modelServices.length > 0 ? (
+										<ArrowPathIcon className="h-10 w-10 text-white animate-spin" />
+									) : (
+										<span className="text-2xl">🤖</span>
+									)}
 								</div>
 							</div>
-							<h3 className="text-xl font-semibold text-gray-900 mb-3">
-								🤖 AI System Initializing
-							</h3>
-							<p className="text-sm text-gray-600 mb-4">
-								Memuat forecasting models dan menganalisis data historis untuk memberikan prediksi terbaik. 
-								{modelServices.length > 0 && (
-									<span className="block mt-2 text-blue-600 font-medium">
-										✅ {modelServices.length} layanan ICON ditemukan
+							<h3 className="text-2xl font-bold text-gray-900 mb-4">
+								{modelServices.length > 0 ? (
+									<span className="flex items-center justify-center gap-2">
+										<span>🔄</span> AI System Loading
 									</span>
+								) : (
+									<span className="flex items-center justify-center gap-2">
+										<span>🤖</span> AI System Initializing
+									</span>
+								)}
+							</h3>
+							<p className="text-sm text-gray-600 mb-6 leading-relaxed">
+								{modelServices.length > 0 ? (
+									<>
+										Memuat forecasting models dan menganalisis data historis untuk memberikan prediksi terbaik...
+										<span className="block mt-3 p-3 bg-green-100 border border-green-300 rounded-lg text-green-800 font-medium">
+											✅ {modelServices.length} layanan ICON siap dianalisis
+										</span>
+									</>
+								) : (
+									<>
+										Sistem sedang mempersiapkan AI models untuk analisis forecasting. 
+										Pastikan koneksi ke backend AI server tersedia.
+									</>
 								)}
 							</p>
 							{modelServices.length === 0 && (
-								<div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-									<p className="font-medium text-yellow-800 mb-1">System Check:</p>
-									<p>• Pastikan backend AI running di port 8000</p>
-									<p>• Verify data tersedia di database</p>
+								<div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-300 rounded-xl p-4 space-y-2">
+									<p className="font-semibold text-yellow-800 mb-2">🔧 System Check:</p>
+									<div className="grid grid-cols-1 gap-2 text-left">
+										<p className="flex items-center gap-2">
+											<span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+											Backend AI server running di port 8000
+										</p>
+										<p className="flex items-center gap-2">
+											<span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+											Database models tersedia
+										</p>
+										<p className="flex items-center gap-2">
+											<span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+											Network connectivity check
+										</p>
+									</div>
 								</div>
 							)}
 						</div>
 					</div>
 				) : (
 					<>
-						<div className="bg-white relative rounded-lg border border-gray-200 p-4 shadow-sm">
-							{chartData && <Line ref={chartRef} data={chartData} options={options} />}
-							{isAutoMode && (
-								<div className="absolute top-3 right-3">
-									<div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs px-3 py-1 rounded-full border shadow-lg">
+						{/* Chart Container */}
+						<div className="bg-white relative rounded-2xl border border-gray-200 p-6 shadow-lg hover:shadow-xl transition-all duration-300">
+							<div className="mb-4 flex items-center justify-between">
+								<div>
+									<h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+										<span className="w-6 h-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+											<span className="text-white text-xs">📈</span>
+										</span>
+										Grafik Prediksi
+									</h3>
+									<p className="text-sm text-gray-500 mt-1">Prediksi durasi penanganan gangguan (menit)</p>
+								</div>
+								{isAutoMode && (
+									<div className="bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs px-4 py-2 rounded-full border shadow-lg">
 										<div className="flex items-center gap-2">
 											<div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-											<span>Auto-cycling</span>
+											<span className="font-medium">Mode Otomatis Aktif</span>
+										</div>
+									</div>
+								)}
+							</div>
+							{chartData && <Line ref={chartRef} data={chartData} options={options} />}
+						</div>
+
+						{/* Statistics Cards */}
+						<div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+							<div className="group bg-white border border-blue-200 rounded-xl p-5 shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-blue-300 transition-all duration-300 ease-out">
+								<div className="flex items-center justify-between mb-4">
+									<div className="flex items-center gap-3">
+										<div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+											<span className="text-white text-sm">📈</span>
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-blue-700">Durasi Tertinggi</p>
+											<p className="text-xs text-blue-500">Peak Value</p>
 										</div>
 									</div>
 								</div>
-							)}
-						</div>
-
-						<div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-							<div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center justify-between mb-2">
-									<p className="text-sm text-blue-600 font-semibold">📈 Peak Duration</p>
-									<div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-										<span className="text-white text-xs font-bold">MAX</span>
-									</div>
+								<div className="text-right">
+									<p className="text-3xl font-bold text-blue-900 leading-none">
+										{maxValue.toFixed(1)}
+									</p>
+									<p className="text-sm text-blue-600 mb-2">menit</p>
+									<p className="text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded-md inline-block">
+										pada {maxLabel}
+									</p>
 								</div>
-								<p className="text-2xl font-bold text-blue-900 mb-1">
-									{maxValue.toFixed(1)} menit
-								</p>
-								<p className="text-sm text-blue-700">pada {maxLabel}</p>
 							</div>
 							
-							<div className="rounded-xl border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center justify-between mb-2">
-									<p className="text-sm text-green-600 font-semibold">⚡ Average</p>
-									<div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-										<span className="text-white text-xs font-bold">AVG</span>
+							<div className="group bg-white border border-green-200 rounded-xl p-5 shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-green-300 transition-all duration-300 ease-out">
+								<div className="flex items-center justify-between mb-4">
+									<div className="flex items-center gap-3">
+										<div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+											<span className="text-white text-sm">⚡</span>
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-green-700">Rata-rata</p>
+											<p className="text-xs text-green-500">Average</p>
+										</div>
 									</div>
 								</div>
-								<p className="text-2xl font-bold text-green-900 mb-1">
-									{avg.toFixed(1)} menit
-								</p>
-								<p className="text-sm text-green-700">rata-rata prediksi</p>
+								<div className="text-right">
+									<p className="text-3xl font-bold text-green-900 leading-none">
+										{avg.toFixed(1)}
+									</p>
+									<p className="text-sm text-green-600 mb-2">menit</p>
+									<p className="text-xs text-green-500 bg-green-50 px-2 py-1 rounded-md inline-block">
+										rata-rata prediksi
+									</p>
+								</div>
 							</div>
 							
-							<div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center justify-between mb-2">
-									<p className="text-sm text-purple-600 font-semibold">🎯 Model Accuracy</p>
-									<div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-										<span className="text-white text-xs font-bold">MAE</span>
+							<div className="group bg-white border border-purple-200 rounded-xl p-5 shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-purple-300 transition-all duration-300 ease-out">
+								<div className="flex items-center justify-between mb-4">
+									<div className="flex items-center gap-3">
+										<div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+											<span className="text-white text-sm">🎯</span>
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-purple-700">Akurasi Model</p>
+											<p className="text-xs text-purple-500">MAE Score</p>
+										</div>
 									</div>
 								</div>
-								<p className="text-2xl font-bold text-purple-900 mb-1">
-									{maeScore != null ? maeScore.toFixed(2) : "-"}
-								</p>
-								<p className="text-sm text-purple-700">mean absolute error</p>
+								<div className="text-right">
+									<p className="text-3xl font-bold text-purple-900 leading-none">
+										{maeScore != null ? maeScore.toFixed(2) : "-.--"}
+									</p>
+									<div className="mt-2 space-y-1">
+										<span className={`text-xs font-medium px-2 py-1 rounded-md inline-block ${modelQuality.bgColor} ${modelQuality.color}`}>
+											{modelQuality.label}
+										</span>
+										<p className="text-xs text-purple-500">
+											{modelQuality.description}
+										</p>
+									</div>
+								</div>
 							</div>
 							
-							<div className="rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center justify-between mb-2">
-									<p className="text-sm text-orange-600 font-semibold">📅 Latest Data</p>
-									<div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-										<span className="text-white text-xs font-bold">📊</span>
+							<div className="group bg-white border border-orange-200 rounded-xl p-5 shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-orange-300 transition-all duration-300 ease-out">
+								<div className="flex items-center justify-between mb-4">
+									<div className="flex items-center gap-3">
+										<div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+											<span className="text-white text-sm">📅</span>
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-orange-700">Data Terbaru</p>
+											<p className="text-xs text-orange-500">Last Update</p>
+										</div>
 									</div>
 								</div>
-								<p className="text-lg font-bold text-orange-900 mb-1">
-									{(lastGlobalDate || lastDataDate) ? new Date((lastGlobalDate || lastDataDate) as string).toLocaleDateString('id-ID', { 
-										day: 'numeric', 
-										month: 'short', 
-										year: 'numeric' 
-									}) : "-"}
-								</p>
-								<p className="text-sm text-orange-700">data terakhir</p>
+								<div className="text-right">
+									<p className="text-2xl font-bold text-orange-900 leading-tight">
+										{(lastGlobalDate || lastDataDate) ? new Date((lastGlobalDate || lastDataDate) as string).toLocaleDateString('id-ID', { 
+											day: 'numeric', 
+											month: 'short', 
+											year: 'numeric' 
+										}) : "Data tidak tersedia"}
+									</p>
+									<p className="text-xs text-orange-500 bg-orange-50 px-2 py-1 rounded-md inline-block mt-2">
+										data terakhir
+									</p>
+								</div>
 							</div>
 						</div>
 					</>
