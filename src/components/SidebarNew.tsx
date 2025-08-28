@@ -16,7 +16,6 @@ export interface SidebarProps {
     activeSection: string;
     onSectionChange: (section: string) => void;
     onFileUpload: (file: File) => Promise<void>;
-    onSerpoPredict?: (file: File) => Promise<void>;
     excelData: ExcelProcessResult | null;
     isUploading: boolean;
 }
@@ -25,12 +24,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     activeSection,
     onSectionChange,
     onFileUpload,
-    onSerpoPredict,
     excelData,
     isUploading,
 }) => {
     const inputRef = useRef<HTMLInputElement | null>(null);
-    const serpoInputRef = useRef<HTMLInputElement | null>(null);
 
     const menuItems = [
         {
@@ -71,19 +68,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         }
         // Reset input to allow re-selecting the same file
         e.target.value = "";
-    };
-
-    const handleSerpoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file || !onSerpoPredict) return;
-
-        try {
-            await onSerpoPredict(file);
-        } catch (error) {
-            console.error("Serpo predict error:", error);
-        }
-        // Reset input to allow re-selecting the same file
-        event.target.value = "";
     };
 
     return (
@@ -132,36 +116,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </>
                         )}
                     </button>
-
-                    {/* Serpo Predict Upload */}
-                    {onSerpoPredict && (
-                        <>
-                            <input
-                                ref={serpoInputRef}
-                                type="file"
-                                accept=".xlsx,.xls,.csv"
-                                className="hidden"
-                                onChange={handleSerpoFileChange}
-                            />
-                            <button
-                                onClick={() => serpoInputRef.current?.click()}
-                                disabled={isUploading}
-                                className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isUploading ? (
-                                    <>
-                                        <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                                        Memproses...
-                                    </>
-                                ) : (
-                                    <>
-                                        <CpuChipIcon className="h-4 w-4" />
-                                        Evaluasi Serpo
-                                    </>
-                                )}
-                            </button>
-                        </>
-                    )}
 
                     {fileInfo && (
                         <div className="text-xs text-gray-600 bg-gray-50 rounded p-2">

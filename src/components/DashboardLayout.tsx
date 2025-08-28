@@ -8,34 +8,19 @@ import SerpoEvaluationSection from "./SerpoEvaluationSection";
 import LLMSection from "./LLMSection";
 import SentimentSection from "./SentimentSection";
 import type {
-    PredictionPoint,
-    SentimentData,
-    SerpoData,
     ExcelProcessResult,
     ServiceEvaluation,
 } from "@/types";
-import {
-    getMockPredictions,
-    getMockSentiment,
-    getMockSerpoData,
-} from "@/lib/mockData";
 
 const DashboardLayout: React.FC = () => {
     const [activeSection, setActiveSection] = useState<string>("prediction");
     const [excelData, setExcelData] = useState<ExcelProcessResult | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
 
-    // LLM Section state
+    // LLM Section state only
     const [serviceEvaluations, setServiceEvaluations] = useState<ServiceEvaluation[]>([]);
     const [llmSearchQuery, setLlmSearchQuery] = useState<string>("");
-    const [llmSortMode, setLlmSortMode] = useState<'record' | 'durasi'>('record');
-
-    // Mock data states for demo
-    const [serpo] = useState<SerpoData | undefined>(getMockSerpoData());
-    const [predictions] = useState<PredictionPoint[] | undefined>(getMockPredictions());
-    const [sentiment] = useState<SentimentData | undefined>(getMockSentiment());
-
-    // Initialize service evaluations when excelData changes
+    const [llmSortMode, setLlmSortMode] = useState<'record' | 'durasi'>('record');    // Initialize service evaluations when excelData changes
     useEffect(() => {
         if (excelData?.services) {
             const sortedServices = [...excelData.services].sort(
@@ -78,15 +63,13 @@ const DashboardLayout: React.FC = () => {
         } finally {
             setIsUploading(false);
         }
-    }, []);
-
-    const handleEvaluateService = useCallback(async (serviceIndex: number) => {
+    }, []);    const handleEvaluateService = useCallback(async (serviceIndex: number) => {
         if (!excelData || serviceIndex >= serviceEvaluations.length) return;
 
         // Cari service berdasarkan SID dari serviceEvaluations, bukan dari sorted services
         const targetServiceEval = serviceEvaluations[serviceIndex];
         const service = excelData.services.find(s => s.sid === targetServiceEval.sid);
-        
+
         if (!service) {
             console.error('Service not found for SID:', targetServiceEval.sid);
             return;
@@ -128,7 +111,7 @@ const DashboardLayout: React.FC = () => {
                 )
             );
 
-            const res = await fetch("http://localhost:8000/v1/chat/completions", {
+            const res = await fetch("http://localhost:8001/v1/chat/completions", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -245,9 +228,9 @@ Jika data tidak lengkap, sebutkan "Data tidak tersedia" daripada membuat asumsi.
     const renderContent = () => {
         switch (activeSection) {
             case "prediction":
-                return <PredictionSection predictions={predictions} />;
+                return <PredictionSection />;
             case "serpo":
-                return <SerpoEvaluationSection serpoData={serpo} />;
+                return <SerpoEvaluationSection />;
             case "llm":
                 return (
                     <LLMSection
@@ -262,9 +245,9 @@ Jika data tidak lengkap, sebutkan "Data tidak tersedia" daripada membuat asumsi.
                     />
                 );
             case "sentiment":
-                return <SentimentSection sentiment={sentiment} />;
+                return <SentimentSection />;
             default:
-                return <PredictionSection predictions={predictions} />;
+                return <PredictionSection />;
         }
     };
 

@@ -7,7 +7,7 @@ import { getMockSentiment } from "@/lib/mockData";
 import clsx from "clsx";
 
 export interface SentimentSectionProps {
-	sentiment?: SentimentData;
+	// No props needed - component manages its own state
 }
 
 function getBadge(overallScore: number) {
@@ -16,8 +16,8 @@ function getBadge(overallScore: number) {
 	return { label: "Negative", color: "bg-red-100 text-red-700 ring-red-200" };
 }
 
-const SentimentSection: React.FC<SentimentSectionProps> = ({ sentiment }) => {
-	const data = sentiment ?? getMockSentiment();
+const SentimentSection: React.FC<SentimentSectionProps> = () => {
+	const data = getMockSentiment();
 	const badge = useMemo(() => getBadge(data.overallScore), [data.overallScore]);
 	const percent = Math.round(data.overallScore * 100);
 

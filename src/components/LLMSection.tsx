@@ -87,8 +87,8 @@ const LLMSection: React.FC<LLMSectionProps> = ({
                 <div className="flex gap-2">
                     <button
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${sortMode === 'record'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
                         onClick={() => onSortModeChange('record')}
                     >
@@ -96,8 +96,8 @@ const LLMSection: React.FC<LLMSectionProps> = ({
                     </button>
                     <button
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${sortMode === 'durasi'
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                             }`}
                         onClick={() => onSortModeChange('durasi')}
                     >
@@ -123,7 +123,7 @@ const LLMSection: React.FC<LLMSectionProps> = ({
                             rawValue: Number(val) || 0
                         };
                     });
-                    
+
                     // Gunakan nilai maksimal dari durasiList untuk konsistensi
                     const maxDurasi = Math.max(...durasiList.map(d => d.rawValue));
                     const maxDurasiDisplay = isFinite(maxDurasi) && maxDurasi > 0 ? Math.round(maxDurasi) : 0;
