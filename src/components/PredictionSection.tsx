@@ -2,8 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { ForecastAPIResponse, ForecastPoint, HistoryPoint, PredictionPoint } from "@/types";
-import { getMockPredictions } from "@/lib/mockData";
+import type { ForecastAPIResponse, ForecastPoint, HistoryPoint } from "@/types";
 import {
 	Chart as ChartJS,
 	CategoryScale,
@@ -15,7 +14,7 @@ import {
 	Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, PlayIcon, PauseIcon } from "@heroicons/react/24/outline";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -24,8 +23,6 @@ export interface PredictionSectionProps {
 }
 
 const PredictionSection: React.FC<PredictionSectionProps> = () => {
-	const data = getMockPredictions();
-
 	// selection and local forecast state
 	const [selectedService, setSelectedService] = useState<string>("");
 	const [isFetching, setIsFetching] = useState<boolean>(false);
@@ -56,6 +53,13 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		const day = String(d.getDate()).padStart(2, '0');
 		return `${y}-${m}-${day}`;
 	}
+
+	// Auto-cycling state for demo mode
+	const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
+	const [currentServiceIndex, setCurrentServiceIndex] = useState<number>(0);
+	const [autoModeInterval, setAutoModeInterval] = useState<NodeJS.Timeout | null>(null);
+	const [fadeClass, setFadeClass] = useState<string>("opacity-100");
+	const [nextUpdateTime, setNextUpdateTime] = useState<Date | null>(null);
 
 	// default to first detected service from uploaded data; else fetch from backend Excel
 	useEffect(() => {
@@ -93,7 +97,13 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 
 					setModelsMeta(metaMap);
 					setModelServices(modelNames);
-					if (!selectedService && modelNames.length) setSelectedService(modelNames[0]);
+					if (!selectedService && modelNames.length) {
+						setSelectedService(modelNames[0]);
+						// Auto-load first forecast in demo mode
+						if (isAutoMode && modelNames.length > 0) {
+							loadForecastForService(modelNames[0]);
+						}
+					}
 					if (latestDate) setLastGlobalDate(latestDate);
 				}
 			} catch (error) {
@@ -117,12 +127,52 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		}
 	}, [selectedService, modelsMeta]);
 
-	async function handleForecastClick() {
-		if (!selectedService) return;
+	// Auto-cycle through services in demo mode
+	useEffect(() => {
+		if (isAutoMode && modelServices.length > 0) {
+			const interval = setInterval(() => {
+				// Fade out
+				setFadeClass("opacity-0");
+				setTimeout(() => {
+					setCurrentServiceIndex((prevIndex) => {
+						const nextIndex = (prevIndex + 1) % modelServices.length;
+						const nextService = modelServices[nextIndex];
+						setSelectedService(nextService);
+						loadForecastForService(nextService);
+						return nextIndex;
+					});
+					// Fade in
+					setTimeout(() => setFadeClass("opacity-100"), 100);
+				}, 300);
+			}, 600000); // 10 minutes = 600000ms
+
+			// Set next update time
+			setNextUpdateTime(new Date(Date.now() + 600000));
+			setAutoModeInterval(interval);
+			return () => {
+				if (interval) clearInterval(interval);
+			};
+		}
+	}, [isAutoMode, modelServices]);
+
+	// Update next update time every minute when in auto mode
+	useEffect(() => {
+		if (isAutoMode && nextUpdateTime) {
+			const timer = setInterval(() => {
+				// This will trigger re-render to show countdown
+			}, 60000); // Update every minute
+
+			return () => clearInterval(timer);
+		}
+	}, [isAutoMode, nextUpdateTime]);
+
+	// Auto-load forecast function
+	const loadForecastForService = async (service: string) => {
+		if (!service) return;
 		setIsFetching(true);
 		setErrorMsg("");
 		try {
-			const params = new URLSearchParams({ service: selectedService });
+			const params = new URLSearchParams({ service });
 			const res = await fetch(`/api/forecast?${params.toString()}`);
 			const json = await res.json();
 			if (!res.ok || json?.success === false) {
@@ -138,10 +188,27 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		} finally {
 			setIsFetching(false);
 		}
+	};
+
+	async function handleForecastClick() {
+		if (!selectedService) return;
+		// Disable auto mode when user manually requests forecast
+		setIsAutoMode(false);
+		if (autoModeInterval) {
+			clearInterval(autoModeInterval);
+			setAutoModeInterval(null);
+		}
+		await loadForecastForService(selectedService);
 	}
 
 	async function handleTrainClick() {
 		if (!selectedService) return;
+		// Disable auto mode during training
+		setIsAutoMode(false);
+		if (autoModeInterval) {
+			clearInterval(autoModeInterval);
+			setAutoModeInterval(null);
+		}
 		setIsTraining(true);
 		setErrorMsg("");
 		setTrainMsg("");
@@ -206,7 +273,7 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 		}
 	}, [activeForecast]);
 
-	const hasData = (data && data.length > 0) || !!(activeForecast && activeForecast.forecast?.length);
+	const hasData = !!(activeForecast && activeForecast.forecast?.length);
 
 	// Sync historyVisible with actual history presence
 	useEffect(() => {
@@ -263,22 +330,9 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 
 	const chartData = useMemo(() => {
 		if (chartFromForecast) return chartFromForecast;
-		return {
-			labels: data.map((d) => d.label),
-			datasets: [
-				{
-					label: "Prediksi durasi penanganan (menit)",
-					data: data.map((d) => d.value),
-					borderColor: "rgb(59,130,246)",
-					backgroundColor: "rgba(59,130,246,0.25)",
-					pointRadius: 3,
-					borderWidth: 2,
-					tension: 0.3,
-					fill: true,
-				},
-			],
-		};
-	}, [data, chartFromForecast]);
+		// Remove mock data fallback - show empty state instead
+		return null;
+	}, [chartFromForecast]);
 
 	const options = useMemo(
 		() => ({
@@ -326,125 +380,294 @@ const PredictionSection: React.FC<PredictionSectionProps> = () => {
 			const avg = (forecastValues as number[]).reduce((a, b) => a + b, 0) / (forecastValues as number[]).length;
 			return { maxValue, maxLabel, avg };
 		}
-		if (!hasData) return { maxValue: 0, maxLabel: "", avg: 0 };
-		const values = data.map((d) => d.value);
-		const maxValue = Math.max(...values);
-		const maxIdx = values.indexOf(maxValue);
-		const maxLabel = data[maxIdx]?.label ?? "";
-		const avg = values.reduce((a, b) => a + b, 0) / values.length;
-		return { maxValue, maxLabel, avg };
-	}, [data, hasData, chartFromForecast]);
+		return { maxValue: 0, maxLabel: "", avg: 0 };
+	}, [chartFromForecast]);
+
+	// Toggle auto mode function
+	const toggleAutoMode = () => {
+		if (isAutoMode) {
+			// Turn off auto mode
+			setIsAutoMode(false);
+			setNextUpdateTime(null);
+			if (autoModeInterval) {
+				clearInterval(autoModeInterval);
+				setAutoModeInterval(null);
+			}
+		} else {
+			// Turn on auto mode
+			setIsAutoMode(true);
+			setNextUpdateTime(new Date(Date.now() + 600000));
+		}
+	};
+
+	// Format time remaining until next update
+	const getTimeUntilNextUpdate = (): string => {
+		if (!nextUpdateTime || !isAutoMode) return "";
+		const now = new Date();
+		const diff = nextUpdateTime.getTime() - now.getTime();
+		if (diff <= 0) return "Updating...";
+		const minutes = Math.floor(diff / 60000);
+		return `${minutes}m`;
+	};
 
 	return (
 		<section className="bg-white rounded-xl shadow-sm p-6">
-			<div className="mb-4">
-				<h2 className="text-lg font-medium text-gray-900">Prediksi rata-rata waktu penanganan mingguan</h2>
-				<p className="text-sm text-gray-500">
-					{activeForecast?.service
-						? `ICON: ${activeForecast.service}${activeForecast.tim_serpo ? ` · ${activeForecast.tim_serpo}` : ""}`
-						: "Grafik prediksi berbasis placeholder."}
-				</p>
-			</div>
-
-			<div className="mb-4 grid grid-cols-1 gap-3">
+			<div className="mb-4 flex items-center justify-between">
 				<div>
-					<label className="block text-sm font-medium text-gray-700 mb-1">ICON</label>
-					<div className="flex items-center gap-2 mb-2">
-						<input
-							type="text"
-							placeholder="Cari ICON..."
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="w-full rounded-md border px-3 py-2 text-sm"
-						/>
-						<button
-							type="button"
-							onClick={() => { setQuery(""); setSelectedService(""); }}
-							className="px-2 py-2 text-xs rounded border text-gray-600 hover:bg-gray-50"
-						>
-							Clear
-						</button>
-					</div>
-					<select
-						className="w-full rounded-md border px-3 py-2 text-sm"
-						value={selectedService}
-						onChange={(e) => setSelectedService(e.target.value)}
-					>
-						{(services && services.length ? services : modelServices)
-							.filter((s) => s.toLowerCase().includes(query.toLowerCase()))
-							.map((s) => (
-								<option key={s} value={s}>{s}</option>
-							))}
-					</select>
-				</div>
-				<div className="flex gap-2">
-					<button
-						onClick={handleTrainClick}
-						disabled={!selectedService || isTraining}
-						className="px-3 py-2 bg-amber-600 text-white text-sm rounded hover:bg-amber-700 disabled:opacity-50"
-					>
-						{isTraining ? (
-							<span className="inline-flex items-center gap-1"><ArrowPathIcon className="h-4 w-4 animate-spin" /> Latih...</span>
-						) : (
-							"Latih"
+					<h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+						PLN Analytics - AI Forecasting System
+						{isFetching && (
+							<ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />
 						)}
-					</button>
-					<button
-						onClick={handleForecastClick}
-						disabled={!selectedService || isFetching}
-						className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
-					>
-						{isFetching ? (
-							<span className="inline-flex items-center gap-1"><ArrowPathIcon className="h-4 w-4 animate-spin" /> Forecast...</span>
-						) : (
-							"Forecast"
-						)}
-					</button>
-				</div>
-			</div>
-
-			{errorMsg && (
-				<p className="text-sm text-red-600 mb-3">{errorMsg}</p>
-			)}
-			{!errorMsg && trainMsg && (
-				<p className="text-sm text-gray-700 mb-3">{trainMsg}</p>
-			)}
-
-			{!hasData ? (
-				<div className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-					<p className="text-sm text-gray-600">
-						Belum ada prediksi — upload file untuk jalankan evaluasi AI.
+					</h2>
+					<p className="text-sm text-gray-500">
+						{activeForecast?.service
+							? `ICON: ${activeForecast.service}${activeForecast.tim_serpo ? ` · ${activeForecast.tim_serpo}` : ""}`
+							: "Real-time automated forecasting untuk berbagai layanan ICON"}
 					</p>
 				</div>
-			) : (
-				<>
-					<div className="bg-white">
-						<Line ref={chartRef} data={chartData} options={options} />
-					</div>
+				<div className="flex items-center gap-3">
+					<button
+						onClick={toggleAutoMode}
+						className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+							isAutoMode
+								? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg hover:shadow-xl"
+								: "bg-gradient-to-r from-gray-200 to-gray-300 text-gray-700 hover:from-gray-300 hover:to-gray-400"
+						}`}
+					>
+						{isAutoMode ? (
+							<>
+								<PauseIcon className="h-4 w-4" />
+								<span>Auto Mode</span>
+							</>
+						) : (
+							<>
+								<PlayIcon className="h-4 w-4" />
+								<span>Manual</span>
+							</>
+						)}
+					</button>
+					{isAutoMode && modelServices.length > 0 && (
+						<div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+							<div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+							<span>{currentServiceIndex + 1}/{modelServices.length}</span>
+							{getTimeUntilNextUpdate() && (
+								<span className="ml-1 text-gray-500">· {getTimeUntilNextUpdate()}</span>
+							)}
+						</div>
+					)}
+				</div>
+			</div>
 
-					<div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-						<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-							<p className="text-sm text-gray-500">Prediksi durasi tertinggi</p>
-							<p className="text-xl font-semibold text-gray-900">
-								{maxValue.toFixed(1)} menit
-								<span className="ml-2 text-sm text-gray-600">({maxLabel})</span>
-							</p>
+			<div className={`transition-opacity duration-300 ${fadeClass}`}>
+				<div className="mb-4 grid grid-cols-1 gap-3">
+					<div>
+						<label className="block text-sm font-medium text-gray-700 mb-1">ICON Service</label>
+						<div className="flex items-center gap-2 mb-2">
+							<input
+								type="text"
+								placeholder="Cari ICON..."
+								value={query}
+								onChange={(e) => {
+									setQuery(e.target.value);
+									setIsAutoMode(false);
+									setNextUpdateTime(null);
+									if (autoModeInterval) {
+										clearInterval(autoModeInterval);
+										setAutoModeInterval(null);
+									}
+								}}
+								className="w-full rounded-lg border-2 border-gray-200 px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+							/>
+							<button
+								type="button"
+								onClick={() => { setQuery(""); setSelectedService(""); }}
+								className="px-3 py-2 text-xs rounded-lg border-2 border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+							>
+								Clear
+							</button>
 						</div>
-						<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-							<p className="text-sm text-gray-500">Rata-rata prediksi</p>
-							<p className="text-xl font-semibold text-gray-900">{avg.toFixed(1)} menit</p>
-						</div>
-						<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-							<p className="text-sm text-gray-500">MAE model</p>
-							<p className="text-xl font-semibold text-gray-900">{maeScore != null ? maeScore.toFixed(2) : "-"}</p>
-						</div>
-						<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-							<p className="text-sm text-gray-500">Tanggal data terakhir</p>
-							<p className="text-sm font-medium text-gray-900">{(lastGlobalDate || lastDataDate) ? new Date((lastGlobalDate || lastDataDate) as string).toLocaleDateString() : "-"}</p>
+						<select
+							className="w-full rounded-lg border-2 border-gray-200 px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+							value={selectedService}
+							onChange={(e) => {
+								setSelectedService(e.target.value);
+								setIsAutoMode(false);
+								setNextUpdateTime(null);
+								if (autoModeInterval) {
+									clearInterval(autoModeInterval);
+									setAutoModeInterval(null);
+								}
+							}}
+						>
+							{(services && services.length ? services : modelServices)
+								.filter((s) => s.toLowerCase().includes(query.toLowerCase()))
+								.map((s) => (
+									<option key={s} value={s}>{s}</option>
+								))}
+						</select>
+					</div>
+					<div className="flex gap-3">
+						<button
+							onClick={handleTrainClick}
+							disabled={!selectedService || isTraining}
+							className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm rounded-lg hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
+						>
+							{isTraining ? (
+								<>
+									<ArrowPathIcon className="h-4 w-4 animate-spin" />
+									<span>Training...</span>
+								</>
+							) : (
+								<span>🚀 Train Model</span>
+							)}
+						</button>
+						<button
+							onClick={handleForecastClick}
+							disabled={!selectedService || isFetching}
+							className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm rounded-lg hover:from-green-600 hover:to-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg"
+						>
+							{isFetching ? (
+								<>
+									<ArrowPathIcon className="h-4 w-4 animate-spin" />
+									<span>Loading...</span>
+								</>
+							) : (
+								<span>📊 Get Forecast</span>
+							)}
+						</button>
+					</div>
+				</div>
+
+				{errorMsg && (
+					<div className="mb-4 p-4 bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-500 rounded-r-lg">
+						<div className="flex items-center">
+							<div className="flex-shrink-0">
+								<div className="w-5 h-5 text-red-400">⚠️</div>
+							</div>
+							<div className="ml-3">
+								<p className="text-sm text-red-700">{errorMsg}</p>
+							</div>
 						</div>
 					</div>
-				</>
-			)}
+				)}
+				{!errorMsg && trainMsg && (
+					<div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-r-lg">
+						<div className="flex items-center">
+							<div className="flex-shrink-0">
+								<div className="w-5 h-5 text-blue-400">ℹ️</div>
+							</div>
+							<div className="ml-3">
+								<p className="text-sm text-blue-700">{trainMsg}</p>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{!hasData ? (
+					<div className="rounded-xl border-2 border-dashed border-gray-300 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8 text-center">
+						<div className="mx-auto max-w-md">
+							<div className="mb-6">
+								<div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
+									<ArrowPathIcon className="h-8 w-8 text-white animate-spin" />
+								</div>
+							</div>
+							<h3 className="text-xl font-semibold text-gray-900 mb-3">
+								🤖 AI System Initializing
+							</h3>
+							<p className="text-sm text-gray-600 mb-4">
+								Memuat forecasting models dan menganalisis data historis untuk memberikan prediksi terbaik. 
+								{modelServices.length > 0 && (
+									<span className="block mt-2 text-blue-600 font-medium">
+										✅ {modelServices.length} layanan ICON ditemukan
+									</span>
+								)}
+							</p>
+							{modelServices.length === 0 && (
+								<div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+									<p className="font-medium text-yellow-800 mb-1">System Check:</p>
+									<p>• Pastikan backend AI running di port 8000</p>
+									<p>• Verify data tersedia di database</p>
+								</div>
+							)}
+						</div>
+					</div>
+				) : (
+					<>
+						<div className="bg-white relative rounded-lg border border-gray-200 p-4 shadow-sm">
+							{chartData && <Line ref={chartRef} data={chartData} options={options} />}
+							{isAutoMode && (
+								<div className="absolute top-3 right-3">
+									<div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs px-3 py-1 rounded-full border shadow-lg">
+										<div className="flex items-center gap-2">
+											<div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+											<span>Auto-cycling</span>
+										</div>
+									</div>
+								</div>
+							)}
+						</div>
+
+						<div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center justify-between mb-2">
+									<p className="text-sm text-blue-600 font-semibold">📈 Peak Duration</p>
+									<div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+										<span className="text-white text-xs font-bold">MAX</span>
+									</div>
+								</div>
+								<p className="text-2xl font-bold text-blue-900 mb-1">
+									{maxValue.toFixed(1)} menit
+								</p>
+								<p className="text-sm text-blue-700">pada {maxLabel}</p>
+							</div>
+							
+							<div className="rounded-xl border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center justify-between mb-2">
+									<p className="text-sm text-green-600 font-semibold">⚡ Average</p>
+									<div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+										<span className="text-white text-xs font-bold">AVG</span>
+									</div>
+								</div>
+								<p className="text-2xl font-bold text-green-900 mb-1">
+									{avg.toFixed(1)} menit
+								</p>
+								<p className="text-sm text-green-700">rata-rata prediksi</p>
+							</div>
+							
+							<div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center justify-between mb-2">
+									<p className="text-sm text-purple-600 font-semibold">🎯 Model Accuracy</p>
+									<div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+										<span className="text-white text-xs font-bold">MAE</span>
+									</div>
+								</div>
+								<p className="text-2xl font-bold text-purple-900 mb-1">
+									{maeScore != null ? maeScore.toFixed(2) : "-"}
+								</p>
+								<p className="text-sm text-purple-700">mean absolute error</p>
+							</div>
+							
+							<div className="rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-6 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center justify-between mb-2">
+									<p className="text-sm text-orange-600 font-semibold">📅 Latest Data</p>
+									<div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+										<span className="text-white text-xs font-bold">📊</span>
+									</div>
+								</div>
+								<p className="text-lg font-bold text-orange-900 mb-1">
+									{(lastGlobalDate || lastDataDate) ? new Date((lastGlobalDate || lastDataDate) as string).toLocaleDateString('id-ID', { 
+										day: 'numeric', 
+										month: 'short', 
+										year: 'numeric' 
+									}) : "-"}
+								</p>
+								<p className="text-sm text-orange-700">data terakhir</p>
+							</div>
+						</div>
+					</>
+				)}
+			</div>
 		</section>
 	);
 };
