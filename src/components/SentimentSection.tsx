@@ -378,10 +378,9 @@ const SentimentSection: React.FC<SentimentSectionProps> = () => {
             </button>
           </div>
           
-          <div className="grid gap-3 max-h-64 overflow-y-auto">
+          <div className="grid gap-3 max-h-96 overflow-y-auto">
             {data.category_samples[selectedCategory]
               .filter(item => sentimentFilter === 'all' || item.sentiment_label === sentimentFilter)
-              .slice(0, 15)
               .map((item, idx) => (
               <div
                 key={idx}
