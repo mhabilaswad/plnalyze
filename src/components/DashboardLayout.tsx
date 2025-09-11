@@ -137,7 +137,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 )
             );
 
-            const res = await fetch("http://localhost:8001/v1/chat/completions", {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_LLM_API_URL}/v1/chat/completions`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
